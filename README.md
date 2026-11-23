@@ -25,3 +25,7 @@ GitHub Actions workflow `.github/workflows/build-windows.yml` скачивает
 - `scenes/main.tscn` — главная сцена
 - `scripts/main.gd` — логика управления, боёвки, бота и меню
 - `.github/workflows/` — автоматическая сборка
+
+
+## Важно: запуск Windows-сборки
+Скачивай весь Artifact `ArenaDuel-Windows` и распаковывай его целиком. В одной папке должны находиться `ArenaDuel.exe` и `ArenaDuel.pck`. Не перемещай EXE отдельно от PCK.
