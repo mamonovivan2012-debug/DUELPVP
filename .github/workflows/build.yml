@@ -1,0 +1,30 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  export-windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Godot
+        run: |
+          wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip -O godot.zip
+          unzip -q godot.zip -d godot
+          chmod +x godot/Godot_v4.3-stable_linux.x86_64
+          wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz -O templates.tpz
+          mkdir -p ~/.local/share/godot/export_templates/4.3.stable
+          unzip -q templates.tpz -d templates
+          cp -r templates/templates/* ~/.local/share/godot/export_templates/4.3.stable/
+      - name: Import assets
+        run: godot/Godot_v4.3-stable_linux.x86_64 --headless --editor --path . --quit
+      - name: Export Windows
+        run: mkdir -p build && godot/Godot_v4.3-stable_linux.x86_64 --headless --path . --export-release "Windows Desktop" build/ArenaDuel.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ArenaDuel-Windows
+          path: build/ArenaDuel.exe
