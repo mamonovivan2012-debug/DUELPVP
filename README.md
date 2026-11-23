@@ -29,3 +29,7 @@ GitHub Actions workflow `.github/workflows/build-windows.yml` скачивает
 
 ## Важно: запуск Windows-сборки
 Скачивай весь Artifact `ArenaDuel-Windows` и распаковывай его целиком. В одной папке должны находиться `ArenaDuel.exe` и `ArenaDuel.pck`. Не перемещай EXE отдельно от PCK.
+
+
+## Однофайловая Windows-сборка
+Windows preset настроен с `binary_format/embed_pck=true`: ресурсы игры встраиваются в `ArenaDuel.exe`, отдельный `.pck` не нужен. После сборки скачай Artifact `ArenaDuel-Windows`, распакуй его и запускай EXE.
