@@ -67,7 +67,9 @@ var joy_previous: Dictionary = {}
 var key_previous: Dictionary = {}
 var music_volume := 0.55
 var sfx_volume := 0.8
-var shadow_trail_timer := 0.0
+var shadow_trail_timer := [0.0, 0.0]
+var fighter_motion := [0.0, 0.0]
+var fighter_anim_time := [0.0, 0.0]
 const CHAPTER_NAMES := ["I · Падение крепости", "II · Кража печати", "III · Проклятый лес", "IV · Клятва Стража", "V · Сердце тьмы"]
 const CHAPTER_HEROES := [0, 1, 2, 3, 4]
 const CHAPTER_STORIES := [
@@ -482,11 +484,16 @@ func _start_game(new_mode: int):
     p2 = Vector2(1100, 470)
     hp1 = 100
     hp2 = 100
+    hp1_bar.max_value = 100.0
+    hp2_bar.max_value = 100.0
     round_time = 90
     attack_cd = [0.0, 0.0]
     ability_cd = [0.0, 0.0]
     attack_flash = [0.0, 0.0]
     ability_flash = [0.0, 0.0]
+    fighter_motion = [0.0, 0.0]
+    fighter_anim_time = [0.0, 0.0]
+    shadow_trail_timer = [0.0, 0.0]
     facing = [Vector2.RIGHT, Vector2.LEFT]
     roots = [0.0, 0.0]
     dark_zones = [{}, {}]
@@ -552,18 +559,24 @@ func _process(delta):
         queue_redraw()
         return
     if hp1 <= 0 or hp2 <= 0 or round_time <= 0:
-        if hp1 <= 0: status_text = "Победил " + CHAR_NAMES[char2] + "!"
-        elif hp2 <= 0: status_text = "Победил " + CHAR_NAMES[char1] + "!"
-        else: status_text = "Время вышло!"
-        if mode == Mode.CAMPAIGN and not result_handled:
-            result_handled = true
-            if hp2 <= 0:
-                campaign_unlocked = min(5, max(campaign_unlocked, campaign_chapter + 2))
-                if campaign_chapter == 4: campaign_finished = true
-                _save_progress()
-                status_text = "ГЛАВА ПРОЙДЕНА!  " + CHAPTER_NAMES[campaign_chapter] + "  ·  Нажми В МЕНЮ для продолжения"
+        if mode == Mode.CAMPAIGN:
+            if not result_handled:
+                result_handled = true
+                if hp2 <= 0:
+                    campaign_unlocked = min(5, max(campaign_unlocked, campaign_chapter + 2))
+                    if campaign_chapter == 4:
+                        campaign_finished = true
+                    _save_progress()
+                    status_text = "ГЛАВА ПРОЙДЕНА!  " + CHAPTER_NAMES[campaign_chapter] + "  ·  Нажми В МЕНЮ для продолжения"
+                else:
+                    status_text = "ПОРАЖЕНИЕ. Попробуй ещё раз — глава останется открытой."
+        else:
+            if hp1 <= 0:
+                status_text = "Победил " + CHAR_NAMES[char2] + "!"
+            elif hp2 <= 0:
+                status_text = "Победил " + CHAR_NAMES[char1] + "!"
             else:
-                status_text = "ПОРАЖЕНИЕ. Попробуй ещё раз — глава останется открытой."
+                status_text = "Время вышло!"
         _capture_joy_state()
         queue_redraw()
         return
@@ -583,13 +596,15 @@ func _process(delta):
     if p1_device >= 0:
         var joy0 = _joy_move(p1_device)
         if joy0.length() > 0.2: m1 = joy0
-    if m1.length() > 0.1:
+    fighter_motion[0] = 1.0 if m1.length() > 0.1 and roots[0] <= 0.0 else 0.0
+    fighter_anim_time[0] += delta * (1.0 if fighter_motion[0] > 0.0 else 0.55)
+    if roots[0] <= 0.0 and m1.length() > 0.1:
         p1 += m1.normalized() * _speed(char1) * (1.3 if _is_dark_prince_empowered(0) else 1.0) * delta
         facing[0] = m1.normalized()
         if char1 == 4:
-            shadow_trail_timer -= delta
-            if shadow_trail_timer <= 0.0:
-                shadow_trail_timer = 0.075
+            shadow_trail_timer[0] -= delta
+            if shadow_trail_timer[0] <= 0.0:
+                shadow_trail_timer[0] = 0.075
                 effects.append({"kind":"shadow_trail", "pos":p1 + Vector2(0, 25), "life":0.42, "max":0.42, "color":Color("#7650a8")})
     p1 = _clamp_player(p1)
 
@@ -598,13 +613,15 @@ func _process(delta):
         if pads.size() > 1:
             var jm = _joy_move(pads[1])
             if jm.length() > 0.2: m2 = jm
+        fighter_motion[1] = 1.0 if m2.length() > 0.1 and roots[1] <= 0.0 else 0.0
+        fighter_anim_time[1] += delta * (1.0 if fighter_motion[1] > 0.0 else 0.55)
         if roots[1] <= 0 and m2.length() > 0.1:
             p2 += m2.normalized() * _speed(char2) * (1.3 if _is_dark_prince_empowered(1) else 1.0) * delta
             facing[1] = m2.normalized()
             if char2 == 4:
-                shadow_trail_timer -= delta
-                if shadow_trail_timer <= 0.0:
-                    shadow_trail_timer = 0.075
+                shadow_trail_timer[1] -= delta
+                if shadow_trail_timer[1] <= 0.0:
+                    shadow_trail_timer[1] = 0.075
                     effects.append({"kind":"shadow_trail", "pos":p2 + Vector2(0, 25), "life":0.42, "max":0.42, "color":Color("#7650a8")})
         if _p2_attack_pressed(): _melee(1)
         if _p2_ability_pressed(): _ability(1)
@@ -674,11 +691,13 @@ func _speed(character: int) -> float:
 
 func _bot_update(delta):
     var dir = p1 - p2
+    fighter_motion[1] = 1.0 if roots[1] <= 0.0 and dir.length() > 105.0 else 0.0
+    fighter_anim_time[1] += delta * (1.0 if fighter_motion[1] > 0.0 else 0.55)
     var campaign_bonus = (campaign_chapter + 1) * 18 if mode == Mode.CAMPAIGN else 0
-    if dir.length() > 105:
+    if roots[1] <= 0.0 and dir.length() > 105:
         p2 += dir.normalized() * (150 + bot_level * 48 + campaign_bonus) * delta
         facing[1] = dir.normalized()
-    elif dir.length() < 65:
+    elif roots[1] <= 0.0 and dir.length() < 65:
         p2 -= dir.normalized() * 90 * delta
     if attack_cd[1] <= 0 and dir.length() < 115: _melee(1)
     var boss_chance = 0.008 + bot_level * 0.012 + (campaign_chapter * 0.006 if mode == Mode.CAMPAIGN else 0.0)
@@ -799,6 +818,35 @@ func _send_remote_state():
 func _receive_remote_position(pos: Vector2):
     if multiplayer.is_server(): p2 = _clamp_player(pos)
 
+func _draw_fighter_sprite(player: int, world_pos: Vector2, character: int, tick: float):
+    # Painterly 512x640 transparent character art, animated with a subtle idle/breath cycle.
+    var moving := fighter_motion[player] > 0.0
+    var phase := fighter_anim_time[player] * (10.0 if moving else 2.2)
+    var bob := sin(phase) * (5.0 if moving else 2.0)
+    var sway := sin(phase * 0.5) * (3.0 if moving else 1.2)
+    var pulse := 1.0 + sin(tick * 2.0 + float(player)) * 0.012
+    var w := (176.0 if character == 4 else 184.0) * pulse
+    var h := (230.0 if character == 4 else 236.0) * pulse
+    var foot_y := world_pos.y + 46.0
+    var shadow_color := Color(0.10, 0.045, 0.16, 0.32) if character == 4 else Color(0.015, 0.02, 0.03, 0.38)
+    draw_set_transform(Vector2(world_pos.x, foot_y), 0.0, Vector2(1.0, 0.38))
+    draw_circle(Vector2.ZERO, 48.0 if character == 3 else 42.0, shadow_color)
+    draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+    if character == 4:
+        for aura_index in range(3):
+            var aura_phase := tick * 1.25 + float(aura_index) * TAU / 3.0
+            var aura_pos := world_pos + Vector2(cos(aura_phase) * (58.0 + 5.0 * sin(tick * 2.0)), -34.0 + sin(aura_phase) * 35.0)
+            draw_circle(aura_pos, 13.0 + 3.0 * sin(tick * 3.0 + aura_index), Color(0.38, 0.16, 0.62, 0.16))
+    else:
+        draw_circle(world_pos + Vector2(0, 12), 55.0, Color(CHAR_COLORS[character].r, CHAR_COLORS[character].g, CHAR_COLORS[character].b, 0.055))
+    var attack_ratio := clamp(attack_flash[player] / 0.22, 0.0, 1.0)
+    var lunge := facing[player] * attack_ratio * 9.0
+    var sprite_rect := Rect2(world_pos.x - w * 0.5 + sway + lunge.x, world_pos.y - h * 0.53 - bob + lunge.y, w * (1.0 + attack_ratio * 0.025), h * (1.0 - attack_ratio * 0.018))
+    draw_texture_rect(CHAR_TEXTURES[character], sprite_rect, false, Color(1, 1, 1, 1))
+    if attack_flash[player] > 0.0:
+        var flash_alpha := clamp(attack_flash[player] / 0.22, 0.0, 1.0) * 0.22
+        draw_circle(world_pos + facing[player] * 38.0, 62.0, Color(1.0, 0.78, 0.42, flash_alpha))
+
 func _draw_prince_tendrils(center: Vector2, tick: float):
     for n in range(8):
         var angle = TAU * float(n) / 8.0 + sin(tick * 2.1 + n) * 0.13
@@ -860,18 +908,8 @@ func _draw():
                 var tip = base + Vector2(cos(angle+0.5),sin(angle+0.5))*55
                 draw_line(base, tip, Color(0.13,0.07,0.22,0.95*fade), 18)
                 draw_line(base, tip, Color(0.55,0.31,0.83,0.9*fade), 4)
-    draw_circle(p1+Vector2(0,32),45,Color(0.65,0.12,0.10,0.22))
-    draw_circle(p2+Vector2(0,32),45,Color(0.12,0.38,0.78,0.22))
-    if char1 == 4:
-        for k in range(5):
-            var wobble = sin(Time.get_ticks_msec() * 0.003 + k * 1.4) * 13.0
-            draw_circle(p1 + Vector2(cos(k * TAU / 5.0) * (43 + wobble), sin(k * TAU / 5.0) * 35), 22 + wobble * 0.25, Color(0.16, 0.07, 0.25, 0.52))
-    if char2 == 4:
-        for k in range(5):
-            var wobble2 = sin(Time.get_ticks_msec() * 0.003 + k * 1.4) * 13.0
-            draw_circle(p2 + Vector2(cos(k * TAU / 5.0) * (43 + wobble2), sin(k * TAU / 5.0) * 35), 22 + wobble2 * 0.25, Color(0.16, 0.07, 0.25, 0.52))
-    draw_texture(CHAR_TEXTURES[char1], p1-Vector2(96,96))
-    draw_texture(CHAR_TEXTURES[char2], p2-Vector2(96,96))
+    _draw_fighter_sprite(0, p1, char1, tick)
+    _draw_fighter_sprite(1, p2, char2, tick)
     if char1 == 4:
         _draw_prince_tendrils(p1, tick)
     if char2 == 4:
