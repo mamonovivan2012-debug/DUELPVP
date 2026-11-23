@@ -90,8 +90,10 @@ func _build_ui():
     menu_layer = CanvasLayer.new()
     add_child(menu_layer)
     menu_panel = PanelContainer.new()
-    menu_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+    menu_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
     menu_panel.custom_minimum_size = Vector2(560, 760)
+    menu_panel.size = Vector2(560, 760)
+    menu_panel.position = (get_viewport_rect().size - menu_panel.size) * 0.5
     menu_panel.add_theme_stylebox_override("panel", _make_panel_style())
     menu_layer.add_child(menu_panel)
     var vb = VBoxContainer.new()
@@ -244,8 +246,10 @@ func _hud_name(value: String) -> Label:
 
 func _build_story_ui():
     story_panel = PanelContainer.new()
-    story_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+    story_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
     story_panel.custom_minimum_size = Vector2(760, 220)
+    story_panel.size = Vector2(760, 220)
+    story_panel.position = (get_viewport_rect().size - story_panel.size) * 0.5
     game_layer.add_child(story_panel)
     story_panel.visible = false
     var vb := VBoxContainer.new()
