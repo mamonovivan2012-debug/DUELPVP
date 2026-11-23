@@ -3,8 +3,8 @@ config_version=5
 [application]
 config/name="Arena Duel"
 run/main_scene="res://scenes/main.tscn"
-config/features=PackedStringArray("4.2", "GL Compatibility")
-config/description="Fantasy arena duel: local PvP, PvB and online prototype."
+config/features=PackedStringArray("4.3", "GL Compatibility")
+config/description="Arena Duel: five fighters, local PvP, PvB, campaign chapters and original audio."
 
 [display]
 window/size/viewport_width=1600
