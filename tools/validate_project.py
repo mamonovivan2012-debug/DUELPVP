@@ -9,7 +9,8 @@ errors = []
 script = ROOT / 'scripts/main.gd'
 scene = ROOT / 'scenes/main.tscn'
 project = ROOT / 'project.godot'
-for path in (script, scene, project):
+shaders = (ROOT / 'shaders' / 'fighter_surface.gdshader', ROOT / 'shaders' / 'void_prince.gdshader')
+for path in (script, scene, project, *shaders):
     if not path.is_file():
         errors.append(f'Missing required file: {path.relative_to(ROOT)}')
 
@@ -18,9 +19,13 @@ if script.exists():
     for resource in re.findall(r'(?:preload|load)\("res://([^"]+)"\)', text):
         if not (ROOT / resource).is_file():
             errors.append(f'Missing referenced resource: res://{resource}')
-    for required in ('func _draw_fighter_sprite', 'func _update_dark_zones', 'func _p1_attack_pressed', 'func _p2_attack_pressed'):
+    for required in ('func _draw_fighter_sprite', 'func _update_dark_zones', 'func _p1_attack_pressed', 'func _p2_attack_pressed', 'func _setup_fighter_sprites', 'func _sync_fighter_sprites'):
         if required not in text:
             errors.append(f'Missing expected function: {required}')
+    # Enforce explicit return types for every project function.
+    for line_no, line in enumerate(text.splitlines(), 1):
+        if line.startswith('func ') and ' -> ' not in line:
+            errors.append(f'Function is missing an explicit return type at line {line_no}: {line}')
     # Check delimiters while ignoring comments and quoted strings.
     pairs = {')': '(', ']': '[', '}': '{'}
     stack = []
@@ -74,5 +79,5 @@ if errors:
     for error in errors:
         print(' -', error)
     sys.exit(1)
-print('Static validation passed: required files, resource paths, GDScript delimiters, and character sprite formats.')
+print('Static validation passed: typed function signatures, required files, resource paths, GDScript delimiters, shaders, and character sprite formats.')
 print('NOTE: Godot engine parsing, runtime behavior, controller hardware, and Windows export still require Godot 4.3+.')

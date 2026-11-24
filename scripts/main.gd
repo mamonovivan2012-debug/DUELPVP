@@ -1,39 +1,39 @@
 extends Node2D
 
-const ARENA = preload("res://assets/arena.png")
-const CHAR_TEXTURES = [
+const ARENA: Texture2D = preload("res://assets/arena.png")
+const CHAR_TEXTURES: Array[Texture2D] = [
     preload("res://assets/hero_red.png"),
     preload("res://assets/hero_blue.png"),
     preload("res://assets/hero_druid.png"),
     preload("res://assets/hero_guardian.png"),
     preload("res://assets/hero_dark_prince.png")
 ]
-const CHAR_NAMES = ["Рыцарь", "Разбойник", "Друид", "Страж", "Тёмный принц"]
-const CHAR_COLORS = [Color("#d65b43"), Color("#56b6a0"), Color("#8bbd62"), Color("#d5a64d"), Color("#9b72d6")]
+const CHAR_NAMES: Array[String] = ["Рыцарь", "Разбойник", "Друид", "Страж", "Тёмный принц"]
+const CHAR_COLORS: Array[Color] = [Color("#d65b43"), Color("#56b6a0"), Color("#8bbd62"), Color("#d5a64d"), Color("#9b72d6")]
 
 enum Mode { MENU, LOCAL, BOT, ONLINE, CAMPAIGN }
-var mode = Mode.MENU
-var p1 := Vector2(500, 470)
-var p2 := Vector2(1100, 470)
-var hp1 := 100.0
-var hp2 := 100.0
-var round_time := 90.0
-var attack_cd := [0.0, 0.0]
-var ability_cd := [0.0, 0.0]
-var attack_flash := [0.0, 0.0]
-var ability_flash := [0.0, 0.0]
-var facing := [Vector2.RIGHT, Vector2.LEFT]
-var roots := [0.0, 0.0]
+var mode: int = Mode.MENU
+var p1: Vector2 = Vector2(500, 470)
+var p2: Vector2 = Vector2(1100, 470)
+var hp1: float = 100.0
+var hp2: float = 100.0
+var round_time: float = 90.0
+var attack_cd: Array[float] = [0.0, 0.0]
+var ability_cd: Array[float] = [0.0, 0.0]
+var attack_flash: Array[float] = [0.0, 0.0]
+var ability_flash: Array[float] = [0.0, 0.0]
+var facing: Array[Vector2] = [Vector2.RIGHT, Vector2.LEFT]
+var roots: Array[float] = [0.0, 0.0]
 var dark_zones: Array[Dictionary] = [{}, {}]
-var dark_zone_ticks := [0.0, 0.0]
-var bot_level := 1
-var char1 := 0
-var char2 := 1
+var dark_zone_ticks: Array[float] = [0.0, 0.0]
+var bot_level: int = 1
+var char1: int = 0
+var char2: int = 1
 var projectiles: Array[Dictionary] = []
 var effects: Array[Dictionary] = []
 var peer: ENetMultiplayerPeer
-var net_send_timer := 0.0
-var status_text := "Выбери режим"
+var net_send_timer: float = 0.0
+var status_text: String = "Выбери режим"
 var menu_layer: CanvasLayer
 var game_layer: CanvasLayer
 var hp1_bar: ProgressBar
@@ -52,7 +52,6 @@ var ip_input: LineEdit
 var char1_option: OptionButton
 var char2_option: OptionButton
 var campaign_option: OptionButton
-var campaign_button: Button
 var chapter_panel: PanelContainer
 var settings_panel: PanelContainer
 var music_slider: HSlider
@@ -60,36 +59,46 @@ var sfx_slider: HSlider
 var control_info_label: Label
 var music_player: AudioStreamPlayer
 var sfx_player: AudioStreamPlayer
-var campaign_unlocked := 1
-var campaign_chapter := 0
-var campaign_finished := false
-var result_handled := false
+var boot_error_label: Label
+var combat_status_label: Label
+var campaign_unlocked: int = 1
+var campaign_chapter: int = 0
+var campaign_finished: bool = false
+var result_handled: bool = false
 var joy_previous: Dictionary = {}
 var key_previous: Dictionary = {}
-var music_volume := 0.55
-var sfx_volume := 0.8
-var shadow_trail_timer := [0.0, 0.0]
-var fighter_motion := [0.0, 0.0]
-var fighter_anim_time := [0.0, 0.0]
-const CHAPTER_NAMES := ["I · Падение крепости", "II · Кража печати", "III · Проклятый лес", "IV · Клятва Стража", "V · Сердце тьмы"]
-const CHAPTER_HEROES := [0, 1, 2, 3, 4]
-const CHAPTER_STORIES := [
+var music_volume: float = 0.55
+var sfx_volume: float = 0.8
+var shadow_trail_timer: Array[float] = [0.0, 0.0]
+var fighter_motion: Array[float] = [0.0, 0.0]
+var fighter_anim_time: Array[float] = [0.0, 0.0]
+var fighter_sprites: Array[Sprite2D] = []
+var fighter_materials: Array[ShaderMaterial] = []
+const CHAPTER_NAMES: Array[String] = ["I · Падение крепости", "II · Кража печати", "III · Проклятый лес", "IV · Клятва Стража", "V · Сердце тьмы"]
+const CHAPTER_HEROES: Array[int] = [0, 1, 2, 3, 4]
+const CHAPTER_STORIES: Array[String] = [
     "Крепость Эйрхольм пала за одну ночь. Рыцарь возвращается к разрушенным воротам и находит следы тьмы, которой не было в старых хрониках. На дороге ему встречается Разбойник — и у каждого своя версия случившегося.",
     "Разбойник признаётся: он украл древнюю печать не ради золота. Кто-то обещал ему вернуть человека, которого он потерял. Но печать оказалась ключом к тому, что должно было оставаться запертым.",
     "В проклятом лесу Друид слышит голоса корней. Тьма не уничтожает жизнь — она заставляет её помнить чужую боль. Древний Страж леса не пропустит путников без испытания.",
     "Страж хранит клятву, данную при основании королевства. Он знает, что печать создавалась не для уничтожения тьмы, а для разделения двух сущностей. Теперь клятва требует от него невозможного.",
     "Тёмный принц открывает последнюю дверь. За чудовищной территорией скрывается не завоеватель, а тот, чью сущность раскололи ради спасения королевства. Финал решит, что останется от мира — и от него самого."
 ]
-const CHAPTER_BOSSES := ["Пепельный капитан", "Хранитель печати", "Страж корней", "Первый рыцарь", "Отражение принца"]
+const CHAPTER_BOSSES: Array[String] = ["Пепельный капитан", "Хранитель печати", "Страж корней", "Первый рыцарь", "Отражение принца"]
 
-func _ready():
+func _ready() -> void:
+    # Keep a visible fallback if a resource or UI setup fails instead of leaving
+    # the user with an unexplained empty/grey window.
+    get_viewport().set_clear_color(Color("#11131b"))
     _load_progress()
     _setup_audio()
+    _setup_fighter_sprites()
     _build_ui()
     set_process(true)
+    set_process_input(true)
     queue_redraw()
+    print("[Arena Duel] Boot completed. Main scene and UI are ready.")
 
-func _setup_audio():
+func _setup_audio() -> void:
     music_player = AudioStreamPlayer.new()
     music_player.bus = "Master"
     add_child(music_player)
@@ -98,20 +107,17 @@ func _setup_audio():
     add_child(sfx_player)
     _play_music("menu")
 
-func _play_music(kind: String):
+func _play_music(kind: String) -> void:
     var path = "res://assets/audio/menu_ambience.wav" if kind == "menu" else "res://assets/audio/battle_ambience.wav"
     if ResourceLoader.exists(path):
         var audio_stream: AudioStreamWAV = load(path) as AudioStreamWAV
         if audio_stream != null:
             audio_stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
-            var bytes_per_frame := (2 if audio_stream.format == AudioStreamWAV.FORMAT_16_BITS else 1) * (2 if audio_stream.stereo else 1)
-            audio_stream.loop_begin = 0
-            audio_stream.loop_end = int(audio_stream.data.size() / bytes_per_frame)
             music_player.stream = audio_stream
             music_player.volume_db = linear_to_db(max(0.001, music_volume))
             music_player.play()
 
-func _play_sfx(kind: String):
+func _play_sfx(kind: String) -> void:
     var files = {"sword":"sword.wav", "hit":"impact.wav", "ability":"shadow.wav", "ui":"ui.wav"}
     if not files.has(kind): return
     var path = "res://assets/audio/" + files[kind]
@@ -120,7 +126,7 @@ func _play_sfx(kind: String):
         sfx_player.volume_db = linear_to_db(max(0.001, sfx_volume))
         sfx_player.play()
 
-func _load_progress():
+func _load_progress() -> void:
     var save = ConfigFile.new()
     if save.load("user://arena_duel_progress.cfg") == OK:
         campaign_unlocked = clampi(int(save.get_value("campaign", "unlocked", 1)), 1, 5)
@@ -128,7 +134,7 @@ func _load_progress():
         music_volume = float(save.get_value("audio", "music", 0.55))
         sfx_volume = float(save.get_value("audio", "sfx", 0.8))
 
-func _save_progress():
+func _save_progress() -> void:
     var save = ConfigFile.new()
     save.set_value("campaign", "unlocked", campaign_unlocked)
     save.set_value("campaign", "finished", campaign_finished)
@@ -136,7 +142,7 @@ func _save_progress():
     save.set_value("audio", "sfx", sfx_volume)
     save.save("user://arena_duel_progress.cfg")
 
-func _style_panel(panel: PanelContainer, color: Color = Color("#171923")):
+func _style_panel(panel: PanelContainer, color: Color = Color("#171923")) -> void:
     var style = StyleBoxFlat.new()
     style.bg_color = color
     style.border_color = Color("#9b7848")
@@ -148,7 +154,7 @@ func _style_panel(panel: PanelContainer, color: Color = Color("#171923")):
     style.content_margin_bottom = 18
     panel.add_theme_stylebox_override("panel", style)
 
-func _build_ui():
+func _build_ui() -> void:
     menu_layer = CanvasLayer.new()
     add_child(menu_layer)
     var root = Control.new()
@@ -158,10 +164,10 @@ func _build_ui():
     menu_panel = PanelContainer.new()
     menu_panel.set_anchors_preset(Control.PRESET_CENTER)
     menu_panel.offset_left = -285
-    menu_panel.offset_top = -380
+    menu_panel.offset_top = -330
     menu_panel.offset_right = 285
-    menu_panel.offset_bottom = 380
-    menu_panel.custom_minimum_size = Vector2(570, 760)
+    menu_panel.offset_bottom = 330
+    menu_panel.custom_minimum_size = Vector2(570, 660)
     _style_panel(menu_panel, Color(0.055, 0.065, 0.09, 0.96))
     root.add_child(menu_panel)
     var vb = VBoxContainer.new()
@@ -199,7 +205,7 @@ func _build_ui():
     char2_option.select(1)
     vb.add_child(char2_option)
 
-    campaign_button = _add_button(vb, "СЮЖЕТНАЯ КАМПАНИЯ  ·  ГЛАВА %d/5" % campaign_unlocked, _open_chapters)
+    _add_button(vb, "СЮЖЕТНАЯ КАМПАНИЯ  ·  ГЛАВА %d/5" % campaign_unlocked, _open_chapters)
     _add_button(vb, "ЛОКАЛЬНЫЙ PvP", _start_local)
     _add_button(vb, "PvB  ·  ПРОТИВ БОТА", _start_bot)
     _add_button(vb, "ОНЛАЙН PvP  ·  СОЗДАТЬ КОМНАТУ", _host_online)
@@ -381,72 +387,79 @@ func _build_ui():
     help.add_theme_font_size_override("font_size", 13)
     help.add_theme_color_override("font_color", Color("#f0dfc1"))
     hud.add_child(help)
+    combat_status_label = Label.new()
+    combat_status_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+    combat_status_label.offset_left = -360
+    combat_status_label.offset_top = 88
+    combat_status_label.offset_right = 360
+    combat_status_label.offset_bottom = 124
+    combat_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    combat_status_label.add_theme_font_size_override("font_size", 18)
+    combat_status_label.add_theme_color_override("font_color", Color("#f4d7a2"))
+    combat_status_label.text = ""
+    hud.add_child(combat_status_label)
     var back = Button.new()
     back.text = "В МЕНЮ"
-    back.position = Vector2(30, 84)
-    back.focus_mode = Control.FOCUS_NONE
+    back.position = Vector2(18, 18)
     back.pressed.connect(_back_menu)
     hud.add_child(back)
 
-func _refresh_campaign_ui():
-    if campaign_option == null: return
-    for i in range(CHAPTER_NAMES.size()):
-        campaign_option.set_item_text(i, CHAPTER_NAMES[i] + ("  ·  ЗАКРЫТО" if i >= campaign_unlocked else ""))
-    campaign_option.select(min(campaign_unlocked - 1, 4))
-    _show_chapter_info(campaign_option.selected)
-    if campaign_button != null:
-        campaign_button.text = "СЮЖЕТНАЯ КАМПАНИЯ  ·  ГЛАВА %d/5" % campaign_unlocked
-
-func _show_chapter_info(index: int):
+func _show_chapter_info(index: int) -> void:
     var info: Label = chapter_panel.find_child("ChapterInfo", true, false) as Label
     if info != null:
         info.text = CHAPTER_STORIES[index] if index < campaign_unlocked else "Эта глава пока закрыта. Пройди предыдущую главу, чтобы открыть её."
 
-func _open_chapters():
+func _open_chapters() -> void:
     menu_panel.visible = false
     chapter_panel.visible = true
     settings_panel.visible = false
     _play_sfx("ui")
 
-func _close_chapters():
+func _close_chapters() -> void:
     chapter_panel.visible = false
     menu_panel.visible = true
 
-func _start_selected_chapter():
+func _start_selected_chapter() -> void:
     var index = campaign_option.get_selected_id()
     if index >= campaign_unlocked:
         _show_chapter_info(index)
         return
+    if index < 0 or index >= CHAPTER_NAMES.size():
+        return
     campaign_chapter = index
     char1 = CHAPTER_HEROES[index]
     char2 = 4 if index < 4 else 3
+    char1_option.select(char1)
+    char2_option.select(char2)
     chapter_panel.visible = false
     _start_game(Mode.CAMPAIGN)
     hp2 = 100.0 + float(index) * 12.0
     hp2_bar.max_value = hp2
-    bot_level = mini(2, index / 2)
+    bot_level = mini(2, int(index / 2))
     _update_hud()
     status_text = CHAPTER_STORIES[index]
 
-func _open_settings():
+func _open_settings() -> void:
     menu_panel.visible = false
     settings_panel.visible = true
     var pads = Input.get_connected_joypads()
     control_info_label.text = "КЛАВИАТУРА\nP1: WASD · SPACE — атака · Q — способность\nP2: стрелки · ENTER — атака · SHIFT — способность\n\nГЕЙМПАДЫ\nЛевый стик — движение · A — атака · X — способность\nПодключено контроллеров: %d\nПервый контроллер — P1; второй — P2. Один контроллер в PvB управляет P1." % pads.size()
 
-func _close_settings():
+func _close_settings() -> void:
     settings_panel.visible = false
     menu_panel.visible = true
     _save_progress()
 
-func _on_music_volume(value: float):
+func _on_music_volume(value: float) -> void:
     music_volume = value
     if music_player: music_player.volume_db = linear_to_db(max(0.001, value))
+    _save_progress()
 
-func _on_sfx_volume(value: float):
+func _on_sfx_volume(value: float) -> void:
     sfx_volume = value
+    _save_progress()
 
-func _add_button(parent: VBoxContainer, caption: String, action: Callable) -> Button:
+func _add_button(parent: VBoxContainer, caption: String, action: Callable) -> void:
     var b = Button.new()
     b.text = caption
     b.custom_minimum_size = Vector2(0, 42)
@@ -473,22 +486,21 @@ func _add_button(parent: VBoxContainer, caption: String, action: Callable) -> Bu
     b.add_theme_color_override("font_hover_color", Color("#fff0cf"))
     b.pressed.connect(action)
     parent.add_child(b)
-    return b
 
-func _read_character_picks():
+func _read_character_picks() -> void:
     char1 = char1_option.get_selected_id()
     char2 = char2_option.get_selected_id()
 
-func _start_local():
+func _start_local() -> void:
     _read_character_picks()
     _start_game(Mode.LOCAL)
 
-func _start_bot():
+func _start_bot() -> void:
     _read_character_picks()
     bot_level = bot_option.selected
     _start_game(Mode.BOT)
 
-func _start_game(new_mode: int):
+func _start_game(new_mode: int) -> void:
     _disconnect_network()
     mode = new_mode
     p1 = Vector2(500, 470)
@@ -521,20 +533,20 @@ func _start_game(new_mode: int):
     _play_sfx("ui")
     queue_redraw()
 
-func _host_online():
+func _host_online() -> void:
     _read_character_picks()
     _start_game(Mode.ONLINE)
     peer = ENetMultiplayerPeer.new()
     var err = peer.create_server(2456, 1)
     if err != OK:
-        _back_menu()
         status_label.text = "Не удалось открыть порт 2456: " + str(err)
+        _back_menu()
         return
     multiplayer.multiplayer_peer = peer
     status_text = "Комната создана. Сообщи другу IP; UDP-порт 2456."
     status_label.text = status_text
 
-func _join_online():
+func _join_online() -> void:
     _read_character_picks()
     var address = ip_input.text.strip_edges()
     if address.is_empty(): address = "127.0.0.1"
@@ -542,18 +554,18 @@ func _join_online():
     peer = ENetMultiplayerPeer.new()
     var err = peer.create_client(address, 2456)
     if err != OK:
-        _back_menu()
         status_label.text = "Не удалось подключиться: " + str(err)
+        _back_menu()
         return
     multiplayer.multiplayer_peer = peer
     status_text = "Подключение к " + address
 
-func _disconnect_network():
+func _disconnect_network() -> void:
     if multiplayer.multiplayer_peer != null:
         multiplayer.multiplayer_peer.close()
         multiplayer.multiplayer_peer = null
 
-func _back_menu():
+func _back_menu() -> void:
     _disconnect_network()
     mode = Mode.MENU
     game_layer.visible = false
@@ -561,11 +573,10 @@ func _back_menu():
     status_label.text = "Выбери режим"
     chapter_panel.visible = false
     settings_panel.visible = false
-    _refresh_campaign_ui()
     _play_music("menu")
     queue_redraw()
 
-func _process(delta):
+func _process(delta) -> void:
     if mode == Mode.MENU:
         _capture_joy_state()
         queue_redraw()
@@ -587,12 +598,8 @@ func _process(delta):
                 status_text = "Победил " + CHAR_NAMES[char2] + "!"
             elif hp2 <= 0:
                 status_text = "Победил " + CHAR_NAMES[char1] + "!"
-            elif hp1 > hp2:
-                status_text = "Время вышло! Победил " + CHAR_NAMES[char1] + "!"
-            elif hp2 > hp1:
-                status_text = "Время вышло! Победил " + CHAR_NAMES[char2] + "!"
             else:
-                status_text = "Время вышло! Ничья!"
+                status_text = "Время вышло!"
         _capture_joy_state()
         queue_redraw()
         return
@@ -646,14 +653,14 @@ func _process(delta):
     elif mode == Mode.ONLINE:
         if not multiplayer.is_server(): _send_remote_state()
 
-    if _p1_attack_pressed(): _melee(0)
+    if roots[0] <= 0 and _p1_attack_pressed(): _melee(0)
     if _p1_ability_pressed(): _ability(0)
     _update_effects(delta)
     _update_hud()
     _capture_joy_state()
     queue_redraw()
 
-func _capture_joy_state():
+func _capture_joy_state() -> void:
     for keycode in [KEY_SPACE, KEY_Q, KEY_ENTER, KEY_SHIFT]:
         key_previous[str(keycode)] = Input.is_key_pressed(keycode)
     for device in Input.get_connected_joypads():
@@ -705,7 +712,7 @@ func _clamp_player(p: Vector2) -> Vector2:
 func _speed(character: int) -> float:
     return [260.0, 330.0, 270.0, 215.0, 250.0][character]
 
-func _bot_update(delta):
+func _bot_update(delta) -> void:
     var dir = p1 - p2
     fighter_motion[1] = 1.0 if roots[1] <= 0.0 and dir.length() > 105.0 else 0.0
     fighter_anim_time[1] += delta * (1.0 if fighter_motion[1] > 0.0 else 0.55)
@@ -720,7 +727,7 @@ func _bot_update(delta):
     if ability_cd[1] <= 0 and dir.length() < 210 and randf() < boss_chance: _ability(1)
     p2 = _clamp_player(p2)
 
-func _melee(player: int):
+func _melee(player: int) -> void:
     if attack_cd[player] > 0: return
     attack_cd[player] = [0.48, 0.32, 0.55, 0.72, 0.52][char1 if player == 0 else char2]
     attack_flash[player] = 0.22
@@ -738,7 +745,7 @@ func _melee(player: int):
         effects.append({"kind":"hit","pos":target,"life":0.25,"max":0.25,"color":Color("#ffe2a0")})
     effects.append({"kind":"slash","pos":attacker+dir*50,"dir":dir,"life":0.22,"max":0.22,"color":CHAR_COLORS[char1 if player == 0 else char2]})
 
-func _ability(player: int):
+func _ability(player: int) -> void:
     if ability_cd[player] > 0: return
     var character = char1 if player == 0 else char2
     var attacker = p1 if player == 0 else p2
@@ -779,7 +786,7 @@ func _is_dark_prince_empowered(player: int) -> bool:
     var pos = p1 if player == 0 else p2
     return pos.distance_to(dark_zones[player].center) <= float(dark_zones[player].radius)
 
-func _update_dark_zones(delta: float):
+func _update_dark_zones(delta: float) -> void:
     for owner in range(2):
         if dark_zones[owner].is_empty(): continue
         dark_zones[owner].life = max(0.0, float(dark_zones[owner].life) - delta)
@@ -800,7 +807,7 @@ func _update_dark_zones(delta: float):
                     effects.append({"kind":"hit","pos":enemy,"life":0.2,"max":0.2,"color":Color("#a77be8")})
                     break
 
-func _damage(player: int, amount: float):
+func _damage(player: int, amount: float) -> void:
     _play_sfx("hit")
     if player == 0:
         if mode == Mode.CAMPAIGN: amount *= 1.0 + float(campaign_chapter) * 0.08
@@ -808,12 +815,12 @@ func _damage(player: int, amount: float):
     else:
         hp2 = max(0.0, hp2-amount)
 
-func _update_effects(delta):
+func _update_effects(delta) -> void:
     for i in range(effects.size()-1,-1,-1):
         effects[i].life -= delta
         if effects[i].life <= 0: effects.remove_at(i)
 
-func _update_hud():
+func _update_hud() -> void:
     hp1_bar.value = hp1
     hp2_bar.value = hp2
     hp1_name.text = CHAR_NAMES[char1]
@@ -822,20 +829,70 @@ func _update_hud():
     hp2_portrait.texture = CHAR_TEXTURES[char2]
     ability1_label.text = "Способность: ГОТОВА" if ability_cd[0] <= 0.0 else "Способность: %.1f с" % ability_cd[0]
     ability2_label.text = "Способность: ГОТОВА" if ability_cd[1] <= 0.0 else "Способность: %.1f с" % ability_cd[1]
-    var secs := int(ceil(round_time))
-    timer_label.text = "%02d:%02d" % [secs / 60, secs % 60]
+    timer_label.text = "%02d:%02d" % [int(round_time/60), int(round_time)%60]
+    if combat_status_label != null:
+        combat_status_label.text = status_text if (hp1 <= 0.0 or hp2 <= 0.0 or round_time <= 0.0) else ""
 
-func _send_remote_state():
+func _send_remote_state() -> void:
     net_send_timer += get_process_delta_time()
     if net_send_timer > 0.05:
         net_send_timer = 0
         rpc_id(1, "_receive_remote_position", p1)
 
 @rpc("any_peer","call_remote","unreliable")
-func _receive_remote_position(pos: Vector2):
+func _receive_remote_position(pos: Vector2) -> void:
     if multiplayer.is_server(): p2 = _clamp_player(pos)
 
-func _draw_fighter_sprite(player: int, world_pos: Vector2, character: int, tick: float):
+func _setup_fighter_sprites() -> void:
+    var normal_shader: Shader = load("res://shaders/fighter_surface.gdshader") as Shader
+    var prince_shader: Shader = load("res://shaders/void_prince.gdshader") as Shader
+    for player_index: int in range(2):
+        var fighter: Sprite2D = Sprite2D.new()
+        fighter.texture = CHAR_TEXTURES[0]
+        fighter.centered = true
+        fighter.z_index = 2
+        fighter.visible = false
+        var shader_material: ShaderMaterial = ShaderMaterial.new()
+        shader_material.shader = normal_shader
+        fighter.material = shader_material
+        add_child(fighter)
+        fighter_sprites.append(fighter)
+        fighter_materials.append(shader_material)
+    # Cache both shader resources so changing fighters never requires disk access.
+    set_meta("normal_fighter_shader", normal_shader)
+    set_meta("prince_fighter_shader", prince_shader)
+
+func _sync_fighter_sprites(tick: float) -> void:
+    if fighter_sprites.size() != 2:
+        return
+    var positions: Array[Vector2] = [p1, p2]
+    var characters: Array[int] = [char1, char2]
+    for player_index: int in range(2):
+        var fighter: Sprite2D = fighter_sprites[player_index]
+        var character_index: int = clampi(characters[player_index], 0, CHAR_TEXTURES.size() - 1)
+        var moving: bool = fighter_motion[player_index] > 0.0
+        var phase: float = fighter_anim_time[player_index] * (10.0 if moving else 2.2)
+        var bob: float = sin(phase) * (5.0 if moving else 2.0)
+        var sway: float = sin(phase * 0.5) * (3.0 if moving else 1.2)
+        var pulse: float = 1.0 + sin(tick * 2.0 + float(player_index)) * 0.012
+        var width: float = (176.0 if character_index == 4 else 184.0) * pulse
+        var height: float = (230.0 if character_index == 4 else 236.0) * pulse
+        var attack_ratio: float = clampf(attack_flash[player_index] / 0.22, 0.0, 1.0)
+        var lunge: Vector2 = facing[player_index] * attack_ratio * 9.0
+        var texture_size: Vector2 = CHAR_TEXTURES[character_index].get_size()
+        fighter.texture = CHAR_TEXTURES[character_index]
+        fighter.position = Vector2(positions[player_index].x + sway + lunge.x, positions[player_index].y - bob + lunge.y - height * 0.03)
+        fighter.scale = Vector2(width / texture_size.x, height / texture_size.y)
+        fighter.visible = mode != Mode.MENU
+        var shader_material: ShaderMaterial = fighter_materials[player_index]
+        var desired_shader: Shader = (get_meta("prince_fighter_shader") as Shader) if character_index == 4 else (get_meta("normal_fighter_shader") as Shader)
+        if shader_material.shader != desired_shader:
+            shader_material.shader = desired_shader
+        shader_material.set_shader_parameter("time", tick)
+        shader_material.set_shader_parameter("accent_color", CHAR_COLORS[character_index])
+        shader_material.set_shader_parameter("intensity", 1.0 if character_index == 4 else 0.38)
+
+func _draw_fighter_sprite(player: int, world_pos: Vector2, character: int, tick: float) -> void:
     # Painterly 512x640 transparent character art, animated with a subtle idle/breath cycle.
     var moving := fighter_motion[player] > 0.0
     var phase := fighter_anim_time[player] * (10.0 if moving else 2.2)
@@ -859,12 +916,12 @@ func _draw_fighter_sprite(player: int, world_pos: Vector2, character: int, tick:
     var attack_ratio := clamp(attack_flash[player] / 0.22, 0.0, 1.0)
     var lunge := facing[player] * attack_ratio * 9.0
     var sprite_rect := Rect2(world_pos.x - w * 0.5 + sway + lunge.x, world_pos.y - h * 0.53 - bob + lunge.y, w * (1.0 + attack_ratio * 0.025), h * (1.0 - attack_ratio * 0.018))
-    draw_texture_rect(CHAR_TEXTURES[character], sprite_rect, false, Color(1, 1, 1, 1))
+    # Character texture is rendered by a dedicated Sprite2D with a per-hero shader.
     if attack_flash[player] > 0.0:
         var flash_alpha := clamp(attack_flash[player] / 0.22, 0.0, 1.0) * 0.22
         draw_circle(world_pos + facing[player] * 38.0, 62.0, Color(1.0, 0.78, 0.42, flash_alpha))
 
-func _draw_prince_tendrils(center: Vector2, tick: float):
+func _draw_prince_tendrils(center: Vector2, tick: float) -> void:
     for n in range(8):
         var angle = TAU * float(n) / 8.0 + sin(tick * 2.1 + n) * 0.13
         var reach = 72.0 + sin(tick * 3.0 + n * 1.7) * 17.0
@@ -876,7 +933,7 @@ func _draw_prince_tendrils(center: Vector2, tick: float):
         draw_line(bend, tip, Color(0.20, 0.08, 0.31, 0.92), 5.0)
         draw_circle(tip, 4.0, Color(0.52, 0.30, 0.77, 0.8))
 
-func _draw():
+func _draw() -> void:
     draw_texture_rect(ARENA, Rect2(0,0,1600,900), false)
     if mode == Mode.MENU:
         draw_rect(Rect2(0, 0, 1600, 900), Color(0.025, 0.035, 0.065, 0.76), true)
@@ -927,9 +984,9 @@ func _draw():
                 draw_line(base, tip, Color(0.55,0.31,0.83,0.9*fade), 4)
     _draw_fighter_sprite(0, p1, char1, tick)
     _draw_fighter_sprite(1, p2, char2, tick)
-    if char1 == 4:
+    if char1 == 4 and not dark_zones[0].is_empty():
         _draw_prince_tendrils(p1, tick)
-    if char2 == 4:
+    if char2 == 4 and not dark_zones[1].is_empty():
         _draw_prince_tendrils(p2, tick)
     if _is_dark_prince_empowered(0):
         draw_arc(p1, 76, 0, TAU, 48, Color("#bd91ff"), 5)
@@ -955,6 +1012,12 @@ func _draw():
                 draw_line(fx.pos,fx.pos+Vector2(cos(angle),sin(angle))*78*(1-ratio*0.35),Color(0.55,0.78,0.32,ratio),8)
         elif fx.kind == "slam":
             draw_arc(fx.pos,100*(1-ratio*0.3),0,TAU,48,Color(0.95,0.68,0.32,ratio),10)
+        elif fx.kind == "shadow_trail":
+            var trail_color: Color = fx.get("color", Color("#7650a8"))
+            draw_circle(fx.pos, 24.0 * ratio, Color(trail_color.r, trail_color.g, trail_color.b, 0.24 * ratio))
+        elif fx.kind == "shadow_burst":
+            draw_circle(fx.pos, 250.0 * (1.0 - ratio), Color(0.28, 0.10, 0.48, 0.10 * ratio))
+            draw_arc(fx.pos, 250.0 * (1.0 - ratio), 0, TAU, 64, Color(0.68, 0.43, 0.92, ratio), 5.0)
         elif fx.kind == "shadow_burst":
             draw_circle(fx.pos, 260*(1-ratio)+30, Color(0.22,0.10,0.38,0.28*ratio))
             draw_arc(fx.pos, 260*(1-ratio)+30, 0, TAU, 64, Color(0.68,0.42,0.95,ratio), 10)
@@ -965,8 +1028,8 @@ func _draw():
         draw_arc(p1+facing[0]*42,68,-1.3,1.3,20,CHAR_COLORS[char1],8)
     if attack_flash[1] > 0:
         draw_arc(p2+facing[1]*42,68,PI-1.3,PI+1.3,20,CHAR_COLORS[char2],8)
-    draw_multiline_string(ThemeDB.fallback_font,Vector2(250,820),status_text,HORIZONTAL_ALIGNMENT_CENTER,1100,18,3,Color("#fff0d0"))
+    draw_string(ThemeDB.fallback_font,Vector2(460,850),status_text,HORIZONTAL_ALIGNMENT_CENTER,700,18,Color("#fff0d0"))
     if mode == Mode.CAMPAIGN:
-        draw_string(ThemeDB.fallback_font, Vector2(450, 112), CHAPTER_NAMES[campaign_chapter] + "  ·  БОСС: " + CHAPTER_BOSSES[campaign_chapter], HORIZONTAL_ALIGNMENT_CENTER, 700, 18, Color("#f0d29c"))
-    if roots[0] > 0: draw_string(ThemeDB.fallback_font,p1+Vector2(-50,-70),"ROOTED",HORIZONTAL_ALIGNMENT_CENTER,100,14,Color("#b4e47d"))
-    if roots[1] > 0: draw_string(ThemeDB.fallback_font,p2+Vector2(-50,-70),"ROOTED",HORIZONTAL_ALIGNMENT_CENTER,100,14,Color("#b4e47d"))
+        draw_string(ThemeDB.fallback_font, Vector2(650, 112), CHAPTER_NAMES[campaign_chapter] + "  ·  БОСС: " + CHAPTER_BOSSES[campaign_chapter], HORIZONTAL_ALIGNMENT_CENTER, 700, 18, Color("#f0d29c"))
+    if roots[0] > 0: draw_string(ThemeDB.fallback_font,p1+Vector2(-25,-70),"ROOTED",HORIZONTAL_ALIGNMENT_CENTER,100,14,Color("#b4e47d"))
+    if roots[1] > 0: draw_string(ThemeDB.fallback_font,p2+Vector2(-25,-70),"ROOTED",HORIZONTAL_ALIGNMENT_CENTER,100,14,Color("#b4e47d"))
