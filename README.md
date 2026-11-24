@@ -71,3 +71,10 @@
 - `assets/` — арена, новые полнофигурные спрайты бойцов и звуковые ресурсы.
 - `tools/validate_project.py` — статическая проверка целостности ссылок и игровых спрайтов.
 - `.github/workflows/build-windows.yml` — автоматическая сборка Windows.
+
+
+## Диагностика сборки через GitHub Actions
+
+Если EXE открывает пустое/серое окно, откройте вкладку **Actions**, выберите последний запуск workflow и проверьте шаги **Import resources and validate project scripts** и **Smoke test main scene**. Теперь workflow сохраняет `editor-import.log` и `runtime-smoke.log` в Artifacts вместе с EXE. Если проверка находит ошибку GDScript или загрузки ресурса, workflow завершится ошибкой и не должен публиковать новую сборку как успешную.
+
+Для диагностики пришлите содержимое первого лога, в котором есть `SCRIPT ERROR`, `Parse Error` или `ERROR`. Не нужно открывать Godot Editor на компьютере.
