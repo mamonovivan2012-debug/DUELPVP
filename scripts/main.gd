@@ -59,6 +59,8 @@ var sfx_slider: HSlider
 var control_info_label: Label
 var music_player: AudioStreamPlayer
 var sfx_player: AudioStreamPlayer
+var boot_error_label: Label
+var combat_status_label: Label
 var campaign_unlocked := 1
 var campaign_chapter := 0
 var campaign_finished := false
@@ -82,11 +84,16 @@ const CHAPTER_STORIES := [
 const CHAPTER_BOSSES := ["Пепельный капитан", "Хранитель печати", "Страж корней", "Первый рыцарь", "Отражение принца"]
 
 func _ready():
+    # Keep a visible fallback if a resource or UI setup fails instead of leaving
+    # the user with an unexplained empty/grey window.
+    get_viewport().set_clear_color(Color("#11131b"))
     _load_progress()
     _setup_audio()
     _build_ui()
     set_process(true)
+    set_process_input(true)
     queue_redraw()
+    print("[Arena Duel] Boot completed. Main scene and UI are ready.")
 
 func _setup_audio():
     music_player = AudioStreamPlayer.new()
@@ -154,10 +161,10 @@ func _build_ui():
     menu_panel = PanelContainer.new()
     menu_panel.set_anchors_preset(Control.PRESET_CENTER)
     menu_panel.offset_left = -285
-    menu_panel.offset_top = -380
+    menu_panel.offset_top = -330
     menu_panel.offset_right = 285
-    menu_panel.offset_bottom = 380
-    menu_panel.custom_minimum_size = Vector2(570, 760)
+    menu_panel.offset_bottom = 330
+    menu_panel.custom_minimum_size = Vector2(570, 660)
     _style_panel(menu_panel, Color(0.055, 0.065, 0.09, 0.96))
     root.add_child(menu_panel)
     var vb = VBoxContainer.new()
@@ -377,6 +384,17 @@ func _build_ui():
     help.add_theme_font_size_override("font_size", 13)
     help.add_theme_color_override("font_color", Color("#f0dfc1"))
     hud.add_child(help)
+    combat_status_label = Label.new()
+    combat_status_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+    combat_status_label.offset_left = -360
+    combat_status_label.offset_top = 88
+    combat_status_label.offset_right = 360
+    combat_status_label.offset_bottom = 124
+    combat_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    combat_status_label.add_theme_font_size_override("font_size", 18)
+    combat_status_label.add_theme_color_override("font_color", Color("#f4d7a2"))
+    combat_status_label.text = ""
+    hud.add_child(combat_status_label)
     var back = Button.new()
     back.text = "В МЕНЮ"
     back.position = Vector2(18, 18)
@@ -402,6 +420,8 @@ func _start_selected_chapter():
     var index = campaign_option.get_selected_id()
     if index >= campaign_unlocked:
         _show_chapter_info(index)
+        return
+    if index < 0 or index >= CHAPTER_NAMES.size():
         return
     campaign_chapter = index
     char1 = CHAPTER_HEROES[index]
@@ -807,6 +827,8 @@ func _update_hud():
     ability1_label.text = "Способность: ГОТОВА" if ability_cd[0] <= 0.0 else "Способность: %.1f с" % ability_cd[0]
     ability2_label.text = "Способность: ГОТОВА" if ability_cd[1] <= 0.0 else "Способность: %.1f с" % ability_cd[1]
     timer_label.text = "%02d:%02d" % [int(round_time/60), int(round_time)%60]
+    if combat_status_label != null:
+        combat_status_label.text = status_text if (hp1 <= 0.0 or hp2 <= 0.0 or round_time <= 0.0) else ""
 
 func _send_remote_state():
     net_send_timer += get_process_delta_time()
@@ -910,9 +932,9 @@ func _draw():
                 draw_line(base, tip, Color(0.55,0.31,0.83,0.9*fade), 4)
     _draw_fighter_sprite(0, p1, char1, tick)
     _draw_fighter_sprite(1, p2, char2, tick)
-    if char1 == 4:
+    if char1 == 4 and not dark_zones[0].is_empty():
         _draw_prince_tendrils(p1, tick)
-    if char2 == 4:
+    if char2 == 4 and not dark_zones[1].is_empty():
         _draw_prince_tendrils(p2, tick)
     if _is_dark_prince_empowered(0):
         draw_arc(p1, 76, 0, TAU, 48, Color("#bd91ff"), 5)
@@ -938,6 +960,12 @@ func _draw():
                 draw_line(fx.pos,fx.pos+Vector2(cos(angle),sin(angle))*78*(1-ratio*0.35),Color(0.55,0.78,0.32,ratio),8)
         elif fx.kind == "slam":
             draw_arc(fx.pos,100*(1-ratio*0.3),0,TAU,48,Color(0.95,0.68,0.32,ratio),10)
+        elif fx.kind == "shadow_trail":
+            var trail_color: Color = fx.get("color", Color("#7650a8"))
+            draw_circle(fx.pos, 24.0 * ratio, Color(trail_color.r, trail_color.g, trail_color.b, 0.24 * ratio))
+        elif fx.kind == "shadow_burst":
+            draw_circle(fx.pos, 250.0 * (1.0 - ratio), Color(0.28, 0.10, 0.48, 0.10 * ratio))
+            draw_arc(fx.pos, 250.0 * (1.0 - ratio), 0, TAU, 64, Color(0.68, 0.43, 0.92, ratio), 5.0)
         elif fx.kind == "shadow_burst":
             draw_circle(fx.pos, 260*(1-ratio)+30, Color(0.22,0.10,0.38,0.28*ratio))
             draw_arc(fx.pos, 260*(1-ratio)+30, 0, TAU, 64, Color(0.68,0.42,0.95,ratio), 10)
