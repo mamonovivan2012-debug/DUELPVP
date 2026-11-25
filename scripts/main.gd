@@ -558,7 +558,7 @@ func _p1_attack_pressed() -> bool:
     var pad_down := pads.size() > 0 and Input.is_joy_button_pressed(pads[0], JOY_BUTTON_A)
     var key_down := Input.is_key_pressed(KEY_SPACE)
     var down := key_down or pad_down
-    var just := down and not attack_was_down[0]
+    var just: bool = down and not attack_was_down[0]
     attack_was_down[0] = down
     return just
 
@@ -567,7 +567,7 @@ func _p1_ability_pressed() -> bool:
     var pad_down := pads.size() > 0 and Input.is_joy_button_pressed(pads[0], JOY_BUTTON_X)
     var key_down := Input.is_key_pressed(KEY_Q)
     var down := key_down or pad_down
-    var just := down and not ability_was_down[0]
+    var just: bool = down and not ability_was_down[0]
     ability_was_down[0] = down
     return just
 
@@ -576,7 +576,7 @@ func _p2_attack_pressed() -> bool:
     var pad_down := pads.size() > 1 and Input.is_joy_button_pressed(pads[1], JOY_BUTTON_A)
     var key_down := Input.is_key_pressed(KEY_ENTER)
     var down := key_down or pad_down
-    var just := down and not attack_was_down[1]
+    var just: bool = down and not attack_was_down[1]
     attack_was_down[1] = down
     return just
 
@@ -585,7 +585,7 @@ func _p2_ability_pressed() -> bool:
     var pad_down := pads.size() > 1 and Input.is_joy_button_pressed(pads[1], JOY_BUTTON_X)
     var key_down := Input.is_key_pressed(KEY_SHIFT)
     var down := key_down or pad_down
-    var just := down and not ability_was_down[1]
+    var just: bool = down and not ability_was_down[1]
     ability_was_down[1] = down
     return just
 
@@ -862,7 +862,7 @@ func _campaign_event_color() -> Color:
     return [Color("#d58b58"), Color("#d5b56e"), Color("#8dbb63"), Color("#d6c18b"), Color("#a47ad8")][campaign_chapter]
 
 func _draw_campaign_arena_tint() -> void:
-    var tint := [Color(0.28,0.08,0.035,0.10), Color(0.28,0.22,0.08,0.10), Color(0.08,0.22,0.07,0.12), Color(0.22,0.18,0.10,0.10), Color(0.16,0.06,0.28,0.14)][campaign_chapter]
+    var tint: Color = [Color(0.28,0.08,0.035,0.10), Color(0.28,0.22,0.08,0.10), Color(0.08,0.22,0.07,0.12), Color(0.22,0.18,0.10,0.10), Color(0.16,0.06,0.28,0.14)][campaign_chapter]
     draw_rect(Rect2(0,0,1600,900), tint)
     if campaign_chapter == 2:
         for i in range(5):
