@@ -1,49 +1,49 @@
 extends Node2D
 
-const ARENA: Texture2D = preload("res://assets/arena.png")
-const CHAR_TEXTURES: Array[Texture2D] = [
+const ARENA = preload("res://assets/dark_fantasy/arena_battle.png")
+const MENU_BACKDROP = preload("res://assets/dark_fantasy/menu_fortress.png")
+const CHAR_PORTRAITS = [preload("res://assets/dark_fantasy/portrait_knight.png"), preload("res://assets/dark_fantasy/portrait_rogue.png"), preload("res://assets/dark_fantasy/portrait_druid.png"), preload("res://assets/dark_fantasy/portrait_guardian.png"), preload("res://assets/dark_fantasy/portrait_dark_prince.png")]
+const CHAR_TEXTURES = [
     preload("res://assets/hero_red.png"),
     preload("res://assets/hero_blue.png"),
     preload("res://assets/hero_druid.png"),
     preload("res://assets/hero_guardian.png"),
     preload("res://assets/hero_dark_prince.png")
 ]
-const CHAR_NAMES: Array[String] = ["Рыцарь", "Разбойник", "Друид", "Страж", "Тёмный принц"]
-const CHAR_COLORS: Array[Color] = [Color("#d65b43"), Color("#56b6a0"), Color("#8bbd62"), Color("#d5a64d"), Color("#9b72d6")]
+const CHAR_NAMES = ["Рыцарь", "Разбойник", "Друид", "Страж", "Тёмный принц"]
+const CHAR_COLORS = [Color("#d65b43"), Color("#56b6a0"), Color("#8bbd62"), Color("#d5a64d"), Color("#9b72d6")]
 
-enum Mode { MENU, LOCAL, BOT, ONLINE, CAMPAIGN }
-var mode: int = Mode.MENU
-var p1: Vector2 = Vector2(500, 470)
-var p2: Vector2 = Vector2(1100, 470)
-var hp1: float = 100.0
-var hp2: float = 100.0
-var round_time: float = 90.0
-var attack_cd: Array[float] = [0.0, 0.0]
-var ability_cd: Array[float] = [0.0, 0.0]
-var attack_flash: Array[float] = [0.0, 0.0]
-var ability_flash: Array[float] = [0.0, 0.0]
-var facing: Array[Vector2] = [Vector2.RIGHT, Vector2.LEFT]
-var roots: Array[float] = [0.0, 0.0]
+enum Mode { MENU, LOCAL, BOT, ONLINE }
+var mode = Mode.MENU
+var p1 := Vector2(500, 470)
+var p2 := Vector2(1100, 470)
+var hp1 := 100.0
+var hp2 := 100.0
+var round_time := 90.0
+var attack_cd := [0.0, 0.0]
+var ability_cd := [0.0, 0.0]
+var attack_flash := [0.0, 0.0]
+var ability_flash := [0.0, 0.0]
+var facing := [Vector2.RIGHT, Vector2.LEFT]
+var roots := [0.0, 0.0]
 var dark_zones: Array[Dictionary] = [{}, {}]
-var dark_zone_ticks: Array[float] = [0.0, 0.0]
-var bot_level: int = 1
-var char1: int = 0
-var char2: int = 1
+var dark_zone_ticks := [0.0, 0.0]
+var bot_level := 1
+var char1 := 0
+var char2 := 1
 var projectiles: Array[Dictionary] = []
 var effects: Array[Dictionary] = []
 var peer: ENetMultiplayerPeer
-var net_send_timer: float = 0.0
-var status_text: String = "Выбери режим"
+var net_send_timer := 0.0
+var status_text := "Выбери режим"
 var menu_layer: CanvasLayer
 var game_layer: CanvasLayer
 var hp1_bar: ProgressBar
 var hp2_bar: ProgressBar
-var hp1_name: Label
-var hp2_name: Label
-var hp1_portrait: TextureRect
-var hp2_portrait: TextureRect
-var ability1_label: Label
-var ability2_label: Label
+var portrait1: TextureRect
+var portrait2: TextureRect
+var skill1_label: Label
+var skill2_label: Label
 var timer_label: Label
 var status_label: Label
 var menu_panel: PanelContainer
@@ -51,489 +51,381 @@ var bot_option: OptionButton
 var ip_input: LineEdit
 var char1_option: OptionButton
 var char2_option: OptionButton
-var campaign_option: OptionButton
-var chapter_panel: PanelContainer
-var settings_panel: PanelContainer
-var music_slider: HSlider
-var sfx_slider: HSlider
-var control_info_label: Label
+var attack_was_down := [false, false]
+var ability_was_down := [false, false]
+var campaign_active := false
+var campaign_result_handled := false
+var campaign_unlocked := 0
+var settings_dialog: AcceptDialog
+var music_volume := 0.75
+var sfx_volume := 0.85
 var music_player: AudioStreamPlayer
-var sfx_player: AudioStreamPlayer
-var boot_error_label: Label
-var combat_status_label: Label
-var campaign_unlocked: int = 1
-var campaign_chapter: int = 0
-var campaign_finished: bool = false
-var result_handled: bool = false
-var joy_previous: Dictionary = {}
-var key_previous: Dictionary = {}
-var music_volume: float = 0.55
-var sfx_volume: float = 0.8
-var shadow_trail_timer: Array[float] = [0.0, 0.0]
-var fighter_motion: Array[float] = [0.0, 0.0]
-var fighter_anim_time: Array[float] = [0.0, 0.0]
-var fighter_sprites: Array[Sprite2D] = []
-var fighter_materials: Array[ShaderMaterial] = []
-const CHAPTER_NAMES: Array[String] = ["I · Падение крепости", "II · Кража печати", "III · Проклятый лес", "IV · Клятва Стража", "V · Сердце тьмы"]
-const CHAPTER_HEROES: Array[int] = [0, 1, 2, 3, 4]
-const CHAPTER_STORIES: Array[String] = [
-    "Крепость Эйрхольм пала за одну ночь. Рыцарь возвращается к разрушенным воротам и находит следы тьмы, которой не было в старых хрониках. На дороге ему встречается Разбойник — и у каждого своя версия случившегося.",
-    "Разбойник признаётся: он украл древнюю печать не ради золота. Кто-то обещал ему вернуть человека, которого он потерял. Но печать оказалась ключом к тому, что должно было оставаться запертым.",
-    "В проклятом лесу Друид слышит голоса корней. Тьма не уничтожает жизнь — она заставляет её помнить чужую боль. Древний Страж леса не пропустит путников без испытания.",
-    "Страж хранит клятву, данную при основании королевства. Он знает, что печать создавалась не для уничтожения тьмы, а для разделения двух сущностей. Теперь клятва требует от него невозможного.",
-    "Тёмный принц открывает последнюю дверь. За чудовищной территорией скрывается не завоеватель, а тот, чью сущность раскололи ради спасения королевства. Финал решит, что останется от мира — и от него самого."
+var campaign_select_dialog: AcceptDialog
+var campaign_story_dialog: AcceptDialog
+var campaign_chapter := 0
+var campaign_pending_result := false
+var campaign_event_timer := 0.0
+var campaign_event_warning := 0.0
+var campaign_event_ready := false
+var campaign_event_pos := Vector2(800, 470)
+var campaign_event_flash := 0.0
+var visual_time := 0.0
+var ember_particles: Array[Dictionary] = []
+const AUDIO_FILES := {
+    "menu": "res://assets/audio/menu_theme.wav",
+    "battle": "res://assets/audio/battle_theme.wav",
+    "story": "res://assets/audio/story_theme.wav",
+    "sword": "res://assets/audio/sword_swing.wav",
+    "hit": "res://assets/audio/impact.wav",
+    "button": "res://assets/audio/button.wav",
+    "magic": "res://assets/audio/magic.wav",
+    "shadow": "res://assets/audio/shadow.wav",
+    "tentacle": "res://assets/audio/tentacle.wav",
+    "boss": "res://assets/audio/boss.wav",
+    "knight_ability": "res://assets/audio/knight_ability.wav",
+    "rogue_ability": "res://assets/audio/rogue_ability.wav",
+    "druid_ability": "res://assets/audio/druid_ability.wav",
+    "guardian_ability": "res://assets/audio/guardian_ability.wav",
+    "prince_ability": "res://assets/audio/prince_ability.wav",
+    "shadow_end": "res://assets/audio/shadow_end.wav"
+}
+const CAMPAIGN_INTROS := [
+    "Крепость Серебряного Предела пала за одну ночь. Рыцарь находит на камне следы живой тьмы и отправляется искать выживших. На дороге он встречает Разбойника, который знает больше, чем говорит.",
+    "Разбойник украл древнюю печать не ради золота: её символ совпадает с клеймом на вещи, оставленной его пропавшей сестрой. Рыцарь считает его предателем, но в руинах они находят запись о принце, который когда-то удерживал Тьму за гранью.",
+    "Друид входит в проклятый лес, где корни помнят рождение магии. Древние существа не нападают первыми — они пытаются предупредить героя: печать не уничтожает Тьму, а удерживает внутри неё чью-то волю.",
+    "Страж веками охранял королевскую печать, не зная, что её создали из самой сущности наследника престола. Его клятва была основана на лжи. Теперь он должен решить, защищает ли он королевство или продолжает его древнюю ошибку.",
+    "Тёмный принц был последним, кто добровольно принял в себя разлом, чтобы спасти королевство. Совет запечатал его вместе с катастрофой и назвал чудовищем. Его тьма — не жажда власти, а боль и попытка удержать расползающийся разлом. Финальная битва решит, можно ли разорвать печать, не погубив мир."
 ]
-const CHAPTER_BOSSES: Array[String] = ["Пепельный капитан", "Хранитель печати", "Страж корней", "Первый рыцарь", "Отражение принца"]
+const CAMPAIGN_OUTROS := [
+    "За стенами крепости тьма отступила, но Рыцарь находит на обломке печати знак вора. След ведёт к старому тракту.",
+    "Печать отвечает на прикосновение Разбойника. В её памяти звучит голос: «Он не открыл врата. Он держал их закрытыми».",
+    "Лес раскрывает истину: тьма была создана как узел, связывающий разлом с живым сердцем. Страж знает, где находится последний замок.",
+    "Страж снимает шлем перед руинами трона. Он вспоминает мальчика-принца и понимает, что сам помог совету запечатать невиновного.",
+    "Разлом затихает. Принц больше не один несёт его тяжесть. Королевство должно решить, кем считать того, кого оно веками называло чудовищем. Это не конец памяти — это начало искупления."
+]
 
-func _ready() -> void:
-    # Keep a visible fallback if a resource or UI setup fails instead of leaving
-    # the user with an unexplained empty/grey window.
-    get_viewport().set_clear_color(Color("#11131b"))
-    _load_progress()
-    _setup_audio()
-    _setup_fighter_sprites()
+const CAMPAIGN_NAMES := [
+    "I — The Forgotten Arena",
+    "II — Forest of Shadows",
+    "III — The Fallen Fortress",
+    "IV — Abyss Gate",
+    "V — The Dark Throne"
+]
+const CAMPAIGN_DESCRIPTIONS := [
+    "Пыль забытой арены скрывает первую печать. Старые стражи проверят решимость героя.",
+    "Лесные тропы меняются под ногами, а древние хранители защищают тайну печати.",
+    "В павшей крепости остались верные защитники совета и следы королевской тайны.",
+    "У врат Бездны защитник печати испытывает героя последним испытанием.",
+    "На Тёмном троне ждёт тот, чья судьба связана с разломом."
+]
+const CAMPAIGN_GOALS := [
+    "Победить Разбойника и найти знак на печати.",
+    "Победить Тёмного принца и вернуть украденную печать.",
+    "Победить Стража крепости и раскрыть тайну леса.",
+    "Победить Тёмного принца у врат Бездны.",
+    "Победить последнего противника и завершить историю."
+]
+const CAMPAIGN_REWARDS := [
+    "Открывается глава Forest of Shadows.",
+    "Открывается глава The Fallen Fortress.",
+    "Открывается глава Abyss Gate.",
+    "Открывается глава The Dark Throne.",
+    "Кампания завершена. Все главы доступны для повторного прохождения."
+]
+const CAMPAIGN_ENEMIES := [1, 4, 3, 4, 0]
+const CAMPAIGN_SAVE := "user://campaign_progress.save"
+
+func _ready():
+    _load_audio_settings()
+    _setup_audio_buses()
     _build_ui()
-    set_process(true)
-    set_process_input(true)
-    queue_redraw()
-    print("[Arena Duel] Boot completed. Main scene and UI are ready.")
-
-func _setup_audio() -> void:
-    music_player = AudioStreamPlayer.new()
-    music_player.bus = "Master"
-    add_child(music_player)
-    sfx_player = AudioStreamPlayer.new()
-    sfx_player.bus = "Master"
-    add_child(sfx_player)
+    _seed_embers()
     _play_music("menu")
+    set_process(true)
+    queue_redraw()
 
-func _play_music(kind: String) -> void:
-    var path = "res://assets/audio/menu_ambience.wav" if kind == "menu" else "res://assets/audio/battle_ambience.wav"
-    if ResourceLoader.exists(path):
-        var audio_stream: AudioStreamWAV = load(path) as AudioStreamWAV
-        if audio_stream != null:
-            audio_stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
-            music_player.stream = audio_stream
-            music_player.volume_db = linear_to_db(max(0.001, music_volume))
-            music_player.play()
-
-func _play_sfx(kind: String) -> void:
-    var files = {"sword":"sword.wav", "hit":"impact.wav", "ability":"shadow.wav", "ui":"ui.wav"}
-    if not files.has(kind): return
-    var path = "res://assets/audio/" + files[kind]
-    if ResourceLoader.exists(path):
-        sfx_player.stream = load(path)
-        sfx_player.volume_db = linear_to_db(max(0.001, sfx_volume))
-        sfx_player.play()
-
-func _load_progress() -> void:
-    var save = ConfigFile.new()
-    if save.load("user://arena_duel_progress.cfg") == OK:
-        campaign_unlocked = clampi(int(save.get_value("campaign", "unlocked", 1)), 1, 5)
-        campaign_finished = bool(save.get_value("campaign", "finished", false))
-        music_volume = float(save.get_value("audio", "music", 0.55))
-        sfx_volume = float(save.get_value("audio", "sfx", 0.8))
-
-func _save_progress() -> void:
-    var save = ConfigFile.new()
-    save.set_value("campaign", "unlocked", campaign_unlocked)
-    save.set_value("campaign", "finished", campaign_finished)
-    save.set_value("audio", "music", music_volume)
-    save.set_value("audio", "sfx", sfx_volume)
-    save.save("user://arena_duel_progress.cfg")
-
-func _style_panel(panel: PanelContainer, color: Color = Color("#171923")) -> void:
-    var style = StyleBoxFlat.new()
-    style.bg_color = color
-    style.border_color = Color("#9b7848")
-    style.set_border_width_all(2)
-    style.set_corner_radius_all(12)
-    style.content_margin_left = 24
-    style.content_margin_right = 24
-    style.content_margin_top = 18
-    style.content_margin_bottom = 18
-    panel.add_theme_stylebox_override("panel", style)
-
-func _build_ui() -> void:
+func _build_ui():
     menu_layer = CanvasLayer.new()
+    menu_layer.layer = 3
     add_child(menu_layer)
-    var root = Control.new()
-    root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    menu_layer.add_child(root)
-
     menu_panel = PanelContainer.new()
-    menu_panel.set_anchors_preset(Control.PRESET_CENTER)
-    menu_panel.offset_left = -285
-    menu_panel.offset_top = -330
-    menu_panel.offset_right = 285
-    menu_panel.offset_bottom = 330
-    menu_panel.custom_minimum_size = Vector2(570, 660)
-    _style_panel(menu_panel, Color(0.055, 0.065, 0.09, 0.96))
-    root.add_child(menu_panel)
+    menu_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+    menu_panel.custom_minimum_size = Vector2(520, 670)
+    var menu_style := StyleBoxFlat.new()
+    menu_style.bg_color = Color(0.035, 0.045, 0.065, 0.94)
+    menu_style.border_color = Color("#b58b50")
+    menu_style.set_border_width_all(2)
+    menu_style.set_corner_radius_all(12)
+    menu_style.content_margin_left = 28
+    menu_style.content_margin_right = 28
+    menu_style.content_margin_top = 24
+    menu_style.content_margin_bottom = 24
+    menu_panel.add_theme_stylebox_override("panel", menu_style)
+    menu_layer.add_child(menu_panel)
+    menu_panel.modulate.a = 0.0
+    var menu_intro := create_tween()
+    menu_intro.tween_property(menu_panel, "modulate:a", 1.0, 0.7)
+    var menu_scroll := ScrollContainer.new()
+    menu_scroll.custom_minimum_size = Vector2(450, 610)
+    menu_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    menu_panel.add_child(menu_scroll)
     var vb = VBoxContainer.new()
-    vb.add_theme_constant_override("separation", 8)
-    menu_panel.add_child(vb)
+    vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    vb.add_theme_constant_override("separation", 9)
+    menu_scroll.add_child(vb)
     var title = Label.new()
     title.text = "ARENA DUEL"
     title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    title.add_theme_font_size_override("font_size", 46)
-    title.add_theme_color_override("font_color", Color("#f2d49b"))
+    title.add_theme_font_size_override("font_size", 52)
+    title.add_theme_color_override("font_color", Color("#f1d5a5"))
+    title.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.9))
+    title.add_theme_constant_override("shadow_offset_x", 3)
+    title.add_theme_constant_override("shadow_offset_y", 4)
     vb.add_child(title)
     var sub = Label.new()
-    sub.text = "МЕЧИ  ·  МАГИЯ  ·  СУДЬБА КОРОЛЕВСТВА"
+    sub.text = "МЕЧИ • МАГИЯ • АРЕНА"
     sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    sub.add_theme_font_size_override("font_size", 13)
-    sub.add_theme_color_override("font_color", Color("#b9a98c"))
+    sub.add_theme_color_override("font_color", Color("#d6c4a4"))
     vb.add_child(sub)
-    var divider = HSeparator.new()
-    vb.add_child(divider)
 
     var pick1 = Label.new()
-    pick1.text = "БОЕЦ ПЕРВОГО ИГРОКА"
-    pick1.add_theme_color_override("font_color", Color("#d7bd91"))
+    pick1.text = "Персонаж игрока 1"
     vb.add_child(pick1)
     char1_option = OptionButton.new()
     for i in range(CHAR_NAMES.size()): char1_option.add_item(CHAR_NAMES[i], i)
     char1_option.select(0)
     vb.add_child(char1_option)
+
     var pick2 = Label.new()
-    pick2.text = "БОЕЦ ВТОРОГО ИГРОКА / БОТА"
-    pick2.add_theme_color_override("font_color", Color("#d7bd91"))
+    pick2.text = "Персонаж игрока 2 / бота"
     vb.add_child(pick2)
     char2_option = OptionButton.new()
     for i in range(CHAR_NAMES.size()): char2_option.add_item(CHAR_NAMES[i], i)
     char2_option.select(1)
     vb.add_child(char2_option)
 
-    _add_button(vb, "СЮЖЕТНАЯ КАМПАНИЯ  ·  ГЛАВА %d/5" % campaign_unlocked, _open_chapters)
-    _add_button(vb, "ЛОКАЛЬНЫЙ PvP", _start_local)
-    _add_button(vb, "PvB  ·  ПРОТИВ БОТА", _start_bot)
-    _add_button(vb, "ОНЛАЙН PvP  ·  СОЗДАТЬ КОМНАТУ", _host_online)
+    _add_button(vb, "CAMPAIGN • СЮЖЕТНАЯ КАМПАНИЯ", _start_campaign)
+    _add_button(vb, "PLAY • ЛОКАЛЬНАЯ АРЕНА", _start_local)
+    _add_button(vb, "PvB • ПРОТИВ БОТА", _start_bot)
+    _add_button(vb, "PvP • СОЗДАТЬ ОНЛАЙН-КОМНАТУ", _host_online)
     ip_input = LineEdit.new()
     ip_input.placeholder_text = "IP компьютера-хоста"
     ip_input.text = "127.0.0.1"
     vb.add_child(ip_input)
-    _add_button(vb, "ПОДКЛЮЧИТЬСЯ К ОНЛАЙН PvP", _join_online)
+    _add_button(vb, "PvP • ПОДКЛЮЧИТЬСЯ", _join_online)
+
     var optrow = HBoxContainer.new()
     var optlabel = Label.new()
     optlabel.text = "Сложность бота:"
     optrow.add_child(optlabel)
     bot_option = OptionButton.new()
-    bot_option.add_item("Лёгкая", 0)
-    bot_option.add_item("Средняя", 1)
-    bot_option.add_item("Сложная", 2)
+    bot_option.add_item("Лёгкая",0)
+    bot_option.add_item("Средняя",1)
+    bot_option.add_item("Сложная",2)
     bot_option.select(1)
     optrow.add_child(bot_option)
     vb.add_child(optrow)
-    _add_button(vb, "НАСТРОЙКИ ЗВУКА", _open_settings)
     status_label = Label.new()
-    status_label.text = "WASD / стрелки  ·  Xbox A — атака  ·  X — способность"
+    status_label.text = "P1: WASD / геймпад • A/Space атака • X/Q способность\nP2: стрелки / второй геймпад • Enter атака • Shift способность"
     status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    status_label.add_theme_color_override("font_color", Color("#d9c18f"))
-    status_label.add_theme_font_size_override("font_size", 12)
+    status_label.add_theme_color_override("font_color", Color("#e7c98f"))
     vb.add_child(status_label)
-    _add_button(vb, "ВЫХОД", func(): get_tree().quit())
-
-    chapter_panel = PanelContainer.new()
-    chapter_panel.set_anchors_preset(Control.PRESET_CENTER)
-    chapter_panel.offset_left = -310
-    chapter_panel.offset_top = -250
-    chapter_panel.offset_right = 310
-    chapter_panel.offset_bottom = 250
-    _style_panel(chapter_panel)
-    chapter_panel.visible = false
-    root.add_child(chapter_panel)
-    var cv = VBoxContainer.new()
-    cv.add_theme_constant_override("separation", 12)
-    chapter_panel.add_child(cv)
-    var ch_title = Label.new()
-    ch_title.text = "ХРОНИКИ ЗАТМЕНИЯ"
-    ch_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    ch_title.add_theme_font_size_override("font_size", 28)
-    ch_title.add_theme_color_override("font_color", Color("#f2d49b"))
-    cv.add_child(ch_title)
-    campaign_option = OptionButton.new()
-    for i in range(CHAPTER_NAMES.size()): campaign_option.add_item(CHAPTER_NAMES[i] + ("  ·  ЗАКРЫТО" if i >= campaign_unlocked else ""), i)
-    campaign_option.select(min(campaign_unlocked - 1, 4))
-    campaign_option.item_selected.connect(_show_chapter_info)
-    cv.add_child(campaign_option)
-    var info = Label.new()
-    info.name = "ChapterInfo"
-    info.text = CHAPTER_STORIES[min(campaign_unlocked - 1, 4)]
-    info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    info.custom_minimum_size = Vector2(550, 130)
-    cv.add_child(info)
-    _add_button(cv, "НАЧАТЬ ГЛАВУ", _start_selected_chapter)
-    _add_button(cv, "НАЗАД", _close_chapters)
-
-    settings_panel = PanelContainer.new()
-    settings_panel.set_anchors_preset(Control.PRESET_CENTER)
-    settings_panel.offset_left = -280
-    settings_panel.offset_top = -280
-    settings_panel.offset_right = 280
-    settings_panel.offset_bottom = 280
-    _style_panel(settings_panel)
-    settings_panel.visible = false
-    root.add_child(settings_panel)
-    var sv = VBoxContainer.new()
-    sv.add_theme_constant_override("separation", 14)
-    settings_panel.add_child(sv)
-    var st = Label.new()
-    st.text = "НАСТРОЙКИ ЗВУКА"
-    st.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    st.add_theme_font_size_override("font_size", 27)
-    sv.add_child(st)
-    var ml = Label.new()
-    ml.text = "Музыка"
-    sv.add_child(ml)
-    music_slider = HSlider.new()
-    music_slider.min_value = 0
-    music_slider.max_value = 1
-    music_slider.step = 0.01
-    music_slider.value = music_volume
-    music_slider.value_changed.connect(_on_music_volume)
-    sv.add_child(music_slider)
-    var sl = Label.new()
-    sl.text = "Звуковые эффекты"
-    sv.add_child(sl)
-    sfx_slider = HSlider.new()
-    sfx_slider.min_value = 0
-    sfx_slider.max_value = 1
-    sfx_slider.step = 0.01
-    sfx_slider.value = sfx_volume
-    sfx_slider.value_changed.connect(_on_sfx_volume)
-    sv.add_child(sfx_slider)
-    _add_button(sv, "ПРОВЕРИТЬ ЗВУК", func(): _play_sfx("ui"))
-    control_info_label = Label.new()
-    control_info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    control_info_label.add_theme_font_size_override("font_size", 13)
-    control_info_label.text = "P1: WASD · SPACE · Q\nP2: стрелки · ENTER · SHIFT\nГеймпад: левый стик · A · X"
-    sv.add_child(control_info_label)
-    _add_button(sv, "НАЗАД", _close_settings)
+    _add_button(vb, "SETTINGS • НАСТРОЙКИ ЗВУКА", _open_settings)
+    _add_button(vb, "EXIT • ВЫХОД", func(): get_tree().quit())
+    _load_campaign_progress()
+    _build_settings_dialog()
+    _build_campaign_dialog()
+    campaign_story_dialog = AcceptDialog.new()
+    campaign_story_dialog.title = "Хроники Пепельного Королевства"
+    campaign_story_dialog.min_size = Vector2i(700, 340)
+    campaign_story_dialog.confirmed.connect(_campaign_story_confirmed)
+    campaign_story_dialog.close_requested.connect(_back_menu)
+    menu_layer.add_child(campaign_story_dialog)
 
     game_layer = CanvasLayer.new()
+    game_layer.layer = 2
     add_child(game_layer)
     game_layer.visible = false
-    var hud = Control.new()
-    hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    game_layer.add_child(hud)
     var top = HBoxContainer.new()
-    top.set_anchors_preset(Control.PRESET_TOP_WIDE)
-    top.offset_left = 30
-    top.offset_top = 18
-    top.offset_right = -30
-    top.offset_bottom = 72
-    hud.add_child(top)
-    hp1_portrait = TextureRect.new()
-    hp1_portrait.custom_minimum_size = Vector2(58, 58)
-    hp1_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-    top.add_child(hp1_portrait)
-    var p1_hud = VBoxContainer.new()
-    p1_hud.add_theme_constant_override("separation", 2)
-    top.add_child(p1_hud)
-    hp1_name = Label.new()
-    hp1_name.add_theme_color_override("font_color", Color("#f1d5a5"))
-    p1_hud.add_child(hp1_name)
+    top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+    top.offset_left = 28
+    top.offset_top = 16
+    top.offset_right = -28
+    top.offset_bottom = 112
+    top.add_theme_constant_override("separation", 22)
+    game_layer.add_child(top)
+    var left_hud := VBoxContainer.new()
+    left_hud.custom_minimum_size = Vector2(390, 0)
+    top.add_child(left_hud)
+    var left_title_row := HBoxContainer.new()
+    left_title_row.add_theme_constant_override("separation", 10)
+    left_hud.add_child(left_title_row)
+    portrait1 = TextureRect.new()
+    portrait1.custom_minimum_size = Vector2(48, 48)
+    portrait1.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    portrait1.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+    portrait1.texture = CHAR_PORTRAITS[0]
+    left_title_row.add_child(portrait1)
+    var left_name := Label.new()
+    left_name.name = "PlayerOneName"
+    left_name.text = "РЫЦАРЬ"
+    left_name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    left_name.add_theme_font_size_override("font_size", 20)
+    left_name.add_theme_color_override("font_color", Color("#f3d6a1"))
+    left_title_row.add_child(left_name)
     hp1_bar = ProgressBar.new()
-    hp1_bar.custom_minimum_size = Vector2(360, 25)
+    hp1_bar.custom_minimum_size = Vector2(390, 30)
     hp1_bar.max_value = 100
     hp1_bar.show_percentage = false
-    p1_hud.add_child(hp1_bar)
-    ability1_label = Label.new()
-    ability1_label.add_theme_font_size_override("font_size", 12)
-    ability1_label.add_theme_color_override("font_color", Color("#d5c6aa"))
-    p1_hud.add_child(ability1_label)
+    hp1_bar.add_theme_stylebox_override("background", _make_bar_style(Color("#241b1a")))
+    hp1_bar.add_theme_stylebox_override("fill", _make_bar_style(Color("#b94d42")))
+    left_hud.add_child(hp1_bar)
+    skill1_label = Label.new()
+    skill1_label.name = "PlayerOneSkill"
+    skill1_label.text = "A / SPACE — АТАКА     X / Q — СПОСОБНОСТЬ"
+    skill1_label.add_theme_font_size_override("font_size", 12)
+    left_hud.add_child(skill1_label)
     var spacer = Control.new()
     spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     top.add_child(spacer)
+    var center_hud := VBoxContainer.new()
+    center_hud.alignment = BoxContainer.ALIGNMENT_CENTER
+    top.add_child(center_hud)
     timer_label = Label.new()
-    timer_label.add_theme_font_size_override("font_size", 30)
-    timer_label.add_theme_color_override("font_color", Color("#f6e2bb"))
-    top.add_child(timer_label)
+    timer_label.add_theme_font_size_override("font_size", 34)
+    timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    center_hud.add_child(timer_label)
+    var round_label := Label.new()
+    round_label.text = "РАУНД"
+    round_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    round_label.add_theme_font_size_override("font_size", 11)
+    center_hud.add_child(round_label)
     var spacer2 = Control.new()
     spacer2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     top.add_child(spacer2)
-    var p2_hud = VBoxContainer.new()
-    p2_hud.add_theme_constant_override("separation", 2)
-    p2_hud.alignment = BoxContainer.ALIGNMENT_END
-    top.add_child(p2_hud)
-    hp2_name = Label.new()
-    hp2_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-    hp2_name.add_theme_color_override("font_color", Color("#f1d5a5"))
-    p2_hud.add_child(hp2_name)
+    var right_hud := VBoxContainer.new()
+    right_hud.custom_minimum_size = Vector2(390, 0)
+    right_hud.alignment = BoxContainer.ALIGNMENT_END
+    top.add_child(right_hud)
+    var right_title_row := HBoxContainer.new()
+    right_title_row.alignment = BoxContainer.ALIGNMENT_END
+    right_title_row.add_theme_constant_override("separation", 10)
+    right_hud.add_child(right_title_row)
+    var right_name := Label.new()
+    right_name.name = "PlayerTwoName"
+    right_name.text = "РАЗБОЙНИК"
+    right_name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    right_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+    right_name.add_theme_font_size_override("font_size", 20)
+    right_name.add_theme_color_override("font_color", Color("#f3d6a1"))
+    right_title_row.add_child(right_name)
+    portrait2 = TextureRect.new()
+    portrait2.custom_minimum_size = Vector2(48, 48)
+    portrait2.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    portrait2.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+    portrait2.texture = CHAR_PORTRAITS[1]
+    right_title_row.add_child(portrait2)
     hp2_bar = ProgressBar.new()
-    hp2_bar.custom_minimum_size = Vector2(360, 25)
+    hp2_bar.custom_minimum_size = Vector2(390, 30)
     hp2_bar.max_value = 100
     hp2_bar.show_percentage = false
-    p2_hud.add_child(hp2_bar)
-    ability2_label = Label.new()
-    ability2_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-    ability2_label.add_theme_font_size_override("font_size", 12)
-    ability2_label.add_theme_color_override("font_color", Color("#d5c6aa"))
-    p2_hud.add_child(ability2_label)
-    hp2_portrait = TextureRect.new()
-    hp2_portrait.custom_minimum_size = Vector2(58, 58)
-    hp2_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-    top.add_child(hp2_portrait)
-    var help = Label.new()
-    help.text = "P1: WASD / геймпад  ·  SPACE / A — меч  ·  Q / X — способность     P2: стрелки / второй геймпад  ·  ENTER — меч  ·  SHIFT — способность"
-    help.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-    help.offset_left = 170
-    help.offset_top = -46
-    help.offset_right = -170
-    help.offset_bottom = -12
-    help.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    help.add_theme_font_size_override("font_size", 13)
-    help.add_theme_color_override("font_color", Color("#f0dfc1"))
-    hud.add_child(help)
-    combat_status_label = Label.new()
-    combat_status_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-    combat_status_label.offset_left = -360
-    combat_status_label.offset_top = 88
-    combat_status_label.offset_right = 360
-    combat_status_label.offset_bottom = 124
-    combat_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    combat_status_label.add_theme_font_size_override("font_size", 18)
-    combat_status_label.add_theme_color_override("font_color", Color("#f4d7a2"))
-    combat_status_label.text = ""
-    hud.add_child(combat_status_label)
+    hp2_bar.add_theme_stylebox_override("background", _make_bar_style(Color("#1b2029")))
+    hp2_bar.add_theme_stylebox_override("fill", _make_bar_style(Color("#4d8fbd")))
+    right_hud.add_child(hp2_bar)
+    skill2_label = Label.new()
+    skill2_label.name = "PlayerTwoSkill"
+    skill2_label.text = "A / ENTER — АТАКА     X / SHIFT — СПОСОБНОСТЬ"
+    skill2_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+    skill2_label.add_theme_font_size_override("font_size", 12)
+    right_hud.add_child(skill2_label)
     var back = Button.new()
     back.text = "В МЕНЮ"
-    back.position = Vector2(18, 18)
+    back.position = Vector2(18, 850)
     back.pressed.connect(_back_menu)
-    hud.add_child(back)
+    game_layer.add_child(back)
 
-func _show_chapter_info(index: int) -> void:
-    var info: Label = chapter_panel.find_child("ChapterInfo", true, false) as Label
-    if info != null:
-        info.text = CHAPTER_STORIES[index] if index < campaign_unlocked else "Эта глава пока закрыта. Пройди предыдущую главу, чтобы открыть её."
-
-func _open_chapters() -> void:
-    menu_panel.visible = false
-    chapter_panel.visible = true
-    settings_panel.visible = false
-    _play_sfx("ui")
-
-func _close_chapters() -> void:
-    chapter_panel.visible = false
-    menu_panel.visible = true
-
-func _start_selected_chapter() -> void:
-    var index = campaign_option.get_selected_id()
-    if index >= campaign_unlocked:
-        _show_chapter_info(index)
-        return
-    if index < 0 or index >= CHAPTER_NAMES.size():
-        return
-    campaign_chapter = index
-    char1 = CHAPTER_HEROES[index]
-    char2 = 4 if index < 4 else 3
-    char1_option.select(char1)
-    char2_option.select(char2)
-    chapter_panel.visible = false
-    _start_game(Mode.CAMPAIGN)
-    hp2 = 100.0 + float(index) * 12.0
-    hp2_bar.max_value = hp2
-    bot_level = mini(2, int(index / 2))
-    _update_hud()
-    status_text = CHAPTER_STORIES[index]
-
-func _open_settings() -> void:
-    menu_panel.visible = false
-    settings_panel.visible = true
-    var pads = Input.get_connected_joypads()
-    control_info_label.text = "КЛАВИАТУРА\nP1: WASD · SPACE — атака · Q — способность\nP2: стрелки · ENTER — атака · SHIFT — способность\n\nГЕЙМПАДЫ\nЛевый стик — движение · A — атака · X — способность\nПодключено контроллеров: %d\nПервый контроллер — P1; второй — P2. Один контроллер в PvB управляет P1." % pads.size()
-
-func _close_settings() -> void:
-    settings_panel.visible = false
-    menu_panel.visible = true
-    _save_progress()
-
-func _on_music_volume(value: float) -> void:
-    music_volume = value
-    if music_player: music_player.volume_db = linear_to_db(max(0.001, value))
-    _save_progress()
-
-func _on_sfx_volume(value: float) -> void:
-    sfx_volume = value
-    _save_progress()
-
-func _add_button(parent: VBoxContainer, caption: String, action: Callable) -> void:
+func _add_button(parent: VBoxContainer, caption: String, action: Callable):
     var b = Button.new()
     b.text = caption
     b.custom_minimum_size = Vector2(0, 42)
-    b.add_theme_font_size_override("font_size", 16)
-    var normal = StyleBoxFlat.new()
-    normal.bg_color = Color("#34303a")
-    normal.border_color = Color("#8d7048")
+    b.add_theme_font_size_override("font_size", 17)
+    var normal := StyleBoxFlat.new()
+    normal.bg_color = Color("#202b3a")
+    normal.border_color = Color("#8f7147")
     normal.set_border_width_all(1)
-    normal.set_corner_radius_all(7)
-    var hover = StyleBoxFlat.new()
-    hover.bg_color = Color("#55422e")
-    hover.border_color = Color("#e0b86f")
-    hover.set_border_width_all(2)
-    hover.set_corner_radius_all(7)
-    var pressed = StyleBoxFlat.new()
-    pressed.bg_color = Color("#211c25")
-    pressed.border_color = Color("#b28b50")
-    pressed.set_border_width_all(2)
-    pressed.set_corner_radius_all(7)
+    normal.set_corner_radius_all(6)
+    normal.content_margin_left = 12
+    normal.content_margin_right = 12
+    var hover := normal.duplicate() as StyleBoxFlat
+    hover.bg_color = Color("#35475b")
+    hover.border_color = Color("#e0b96f")
+    var pressed := normal.duplicate() as StyleBoxFlat
+    pressed.bg_color = Color("#111a27")
     b.add_theme_stylebox_override("normal", normal)
     b.add_theme_stylebox_override("hover", hover)
     b.add_theme_stylebox_override("pressed", pressed)
     b.add_theme_color_override("font_color", Color("#f1dfc1"))
-    b.add_theme_color_override("font_hover_color", Color("#fff0cf"))
-    b.pressed.connect(action)
+    b.add_theme_color_override("font_hover_color", Color("#fff3d4"))
+    b.add_theme_color_override("font_pressed_color", Color("#d8b978"))
+    b.pressed.connect(_play_button_and_action.bind(action))
     parent.add_child(b)
 
-func _read_character_picks() -> void:
+func _make_bar_style(color: Color) -> StyleBoxFlat:
+    var style := StyleBoxFlat.new()
+    style.bg_color = color
+    style.set_corner_radius_all(5)
+    style.content_margin_left = 2
+    style.content_margin_right = 2
+    style.content_margin_top = 2
+    style.content_margin_bottom = 2
+    return style
+
+func _read_character_picks():
     char1 = char1_option.get_selected_id()
     char2 = char2_option.get_selected_id()
 
-func _start_local() -> void:
+func _start_local():
+    campaign_active = false
     _read_character_picks()
     _start_game(Mode.LOCAL)
 
-func _start_bot() -> void:
+func _start_bot():
+    campaign_active = false
     _read_character_picks()
     bot_level = bot_option.selected
     _start_game(Mode.BOT)
 
-func _start_game(new_mode: int) -> void:
+func _start_game(new_mode: int):
     _disconnect_network()
     mode = new_mode
     p1 = Vector2(500, 470)
     p2 = Vector2(1100, 470)
     hp1 = 100
     hp2 = 100
-    hp1_bar.max_value = 100.0
-    hp2_bar.max_value = 100.0
     round_time = 90
     attack_cd = [0.0, 0.0]
     ability_cd = [0.0, 0.0]
     attack_flash = [0.0, 0.0]
     ability_flash = [0.0, 0.0]
-    fighter_motion = [0.0, 0.0]
-    fighter_anim_time = [0.0, 0.0]
-    shadow_trail_timer = [0.0, 0.0]
     facing = [Vector2.RIGHT, Vector2.LEFT]
     roots = [0.0, 0.0]
     dark_zones = [{}, {}]
     dark_zone_ticks = [0.0, 0.0]
+    attack_was_down = [false, false]
+    ability_was_down = [false, false]
+    campaign_result_handled = false
     projectiles.clear()
     effects.clear()
     status_text = "Меч: SPACE / ENTER     Способность: Q / SHIFT"
-    result_handled = false
     menu_panel.visible = false
-    chapter_panel.visible = false
-    settings_panel.visible = false
     game_layer.visible = true
+    _update_hud()
     _play_music("battle")
-    _play_sfx("ui")
     queue_redraw()
 
-func _host_online() -> void:
+func _host_online():
+    campaign_active = false
     _read_character_picks()
     _start_game(Mode.ONLINE)
     peer = ENetMultiplayerPeer.new()
@@ -546,7 +438,8 @@ func _host_online() -> void:
     status_text = "Комната создана. Сообщи другу IP; UDP-порт 2456."
     status_label.text = status_text
 
-func _join_online() -> void:
+func _join_online():
+    campaign_active = false
     _read_character_picks()
     var address = ip_input.text.strip_edges()
     if address.is_empty(): address = "127.0.0.1"
@@ -560,47 +453,43 @@ func _join_online() -> void:
     multiplayer.multiplayer_peer = peer
     status_text = "Подключение к " + address
 
-func _disconnect_network() -> void:
+func _disconnect_network():
     if multiplayer.multiplayer_peer != null:
         multiplayer.multiplayer_peer.close()
         multiplayer.multiplayer_peer = null
 
-func _back_menu() -> void:
+func _back_menu():
     _disconnect_network()
     mode = Mode.MENU
     game_layer.visible = false
     menu_panel.visible = true
     status_label.text = "Выбери режим"
-    chapter_panel.visible = false
-    settings_panel.visible = false
+    campaign_active = false
     _play_music("menu")
     queue_redraw()
 
-func _process(delta) -> void:
+func _process(delta):
+    visual_time += delta
+    _update_embers(delta)
     if mode == Mode.MENU:
-        _capture_joy_state()
         queue_redraw()
         return
     if hp1 <= 0 or hp2 <= 0 or round_time <= 0:
-        if mode == Mode.CAMPAIGN:
-            if not result_handled:
-                result_handled = true
-                if hp2 <= 0:
-                    campaign_unlocked = min(5, max(campaign_unlocked, campaign_chapter + 2))
-                    if campaign_chapter == 4:
-                        campaign_finished = true
-                    _save_progress()
-                    status_text = "ГЛАВА ПРОЙДЕНА!  " + CHAPTER_NAMES[campaign_chapter] + "  ·  Нажми В МЕНЮ для продолжения"
-                else:
-                    status_text = "ПОРАЖЕНИЕ. Попробуй ещё раз — глава останется открытой."
-        else:
-            if hp1 <= 0:
-                status_text = "Победил " + CHAR_NAMES[char2] + "!"
-            elif hp2 <= 0:
-                status_text = "Победил " + CHAR_NAMES[char1] + "!"
+        if hp1 <= 0: status_text = "Победил " + CHAR_NAMES[char2] + "!"
+        elif hp2 <= 0: status_text = "Победил " + CHAR_NAMES[char1] + "!"
+        else: status_text = "Время вышло!"
+        if campaign_active and not campaign_result_handled:
+            campaign_result_handled = true
+            if hp2 <= 0:
+                campaign_unlocked = min(4, max(campaign_unlocked, campaign_chapter + 1))
+                _save_campaign_progress()
+                status_text = "ГЛАВА ПРОЙДЕНА: " + CAMPAIGN_NAMES[campaign_chapter] + " • Прогресс сохранён"
+                campaign_pending_result = true
+                call_deferred("_show_campaign_result")
             else:
-                status_text = "Время вышло!"
-        _capture_joy_state()
+                status_text = "ГЛАВА НЕ ПРОЙДЕНА • Попробуй ещё раз"
+                campaign_pending_result = true
+                call_deferred("_show_campaign_fail")
         queue_redraw()
         return
 
@@ -612,43 +501,36 @@ func _process(delta) -> void:
         ability_flash[i] = max(0.0, ability_flash[i] - delta)
         roots[i] = max(0.0, roots[i] - delta)
     _update_dark_zones(delta)
+    _update_campaign_event(delta)
 
     var pads = Input.get_connected_joypads()
-    var p1_device = pads[0] if pads.size() > 0 else -1
+    # Player 1 owns the first connected controller in every mode, including PvB.
+    # With one controller, player 2 remains on the arrow-key keyboard layout.
+    var p1_pad = pads[0] if pads.size() >= 1 else -1
+    var p2_pad = pads[1] if pads.size() >= 2 else -1
+
     var m1 = _keyboard_move_1()
-    if p1_device >= 0:
-        var joy0 = _joy_move(p1_device)
-        if joy0.length() > 0.2: m1 = joy0
-    fighter_motion[0] = 1.0 if m1.length() > 0.1 and roots[0] <= 0.0 else 0.0
-    fighter_anim_time[0] += delta * (1.0 if fighter_motion[0] > 0.0 else 0.55)
-    if roots[0] <= 0.0 and m1.length() > 0.1:
-        p1 += m1.normalized() * _speed(char1) * (1.3 if _is_dark_prince_empowered(0) else 1.0) * delta
+    if p1_pad >= 0:
+        var stick1 = _joy_move(p1_pad)
+        if stick1.length() > 0.1:
+            m1 = stick1
+    if m1.length() > 0.1:
+        p1 += m1.limit_length(1.0) * _speed(char1) * (1.3 if _is_dark_prince_empowered(0) else 1.0) * delta
         facing[0] = m1.normalized()
-        if char1 == 4:
-            shadow_trail_timer[0] -= delta
-            if shadow_trail_timer[0] <= 0.0:
-                shadow_trail_timer[0] = 0.075
-                effects.append({"kind":"shadow_trail", "pos":p1 + Vector2(0, 25), "life":0.42, "max":0.42, "color":Color("#7650a8")})
     p1 = _clamp_player(p1)
 
     if mode == Mode.LOCAL:
         var m2 = _keyboard_move_2()
-        if pads.size() > 1:
-            var jm = _joy_move(pads[1])
-            if jm.length() > 0.2: m2 = jm
-        fighter_motion[1] = 1.0 if m2.length() > 0.1 and roots[1] <= 0.0 else 0.0
-        fighter_anim_time[1] += delta * (1.0 if fighter_motion[1] > 0.0 else 0.55)
+        if p2_pad >= 0:
+            var stick2 = _joy_move(p2_pad)
+            if stick2.length() > 0.1:
+                m2 = stick2
         if roots[1] <= 0 and m2.length() > 0.1:
-            p2 += m2.normalized() * _speed(char2) * (1.3 if _is_dark_prince_empowered(1) else 1.0) * delta
+            p2 += m2.limit_length(1.0) * _speed(char2) * (1.3 if _is_dark_prince_empowered(1) else 1.0) * delta
             facing[1] = m2.normalized()
-            if char2 == 4:
-                shadow_trail_timer[1] -= delta
-                if shadow_trail_timer[1] <= 0.0:
-                    shadow_trail_timer[1] = 0.075
-                    effects.append({"kind":"shadow_trail", "pos":p2 + Vector2(0, 25), "life":0.42, "max":0.42, "color":Color("#7650a8")})
         if _p2_attack_pressed(): _melee(1)
         if _p2_ability_pressed(): _ability(1)
-    elif mode == Mode.BOT or mode == Mode.CAMPAIGN:
+    elif mode == Mode.BOT:
         _bot_update(delta)
     elif mode == Mode.ONLINE:
         if not multiplayer.is_server(): _send_remote_state()
@@ -657,26 +539,7 @@ func _process(delta) -> void:
     if _p1_ability_pressed(): _ability(0)
     _update_effects(delta)
     _update_hud()
-    _capture_joy_state()
     queue_redraw()
-
-func _capture_joy_state() -> void:
-    for keycode in [KEY_SPACE, KEY_Q, KEY_ENTER, KEY_SHIFT]:
-        key_previous[str(keycode)] = Input.is_key_pressed(keycode)
-    for device in Input.get_connected_joypads():
-        for button in [JOY_BUTTON_A, JOY_BUTTON_X]:
-            joy_previous[str(device) + ":" + str(button)] = Input.is_joy_button_pressed(device, button)
-
-func _key_just_pressed(keycode: int) -> bool:
-    var key = str(keycode)
-    var down = Input.is_key_pressed(keycode)
-    return down and not bool(key_previous.get(key, false))
-
-func _joy_just_pressed(device: int, button: int) -> bool:
-    if device < 0 or not Input.get_connected_joypads().has(device): return false
-    var key = str(device) + ":" + str(button)
-    var down = Input.is_joy_button_pressed(device, button)
-    return down and not bool(joy_previous.get(key, false))
 
 func _keyboard_move_1() -> Vector2:
     return Vector2(float(Input.is_key_pressed(KEY_D))-float(Input.is_key_pressed(KEY_A)), float(Input.is_key_pressed(KEY_S))-float(Input.is_key_pressed(KEY_W)))
@@ -692,19 +555,39 @@ func _joy_move(index: int) -> Vector2:
 
 func _p1_attack_pressed() -> bool:
     var pads = Input.get_connected_joypads()
-    return _key_just_pressed(KEY_SPACE) or (pads.size() > 0 and _joy_just_pressed(pads[0], JOY_BUTTON_A))
+    var pad_down := pads.size() > 0 and Input.is_joy_button_pressed(pads[0], JOY_BUTTON_A)
+    var key_down := Input.is_key_pressed(KEY_SPACE)
+    var down := key_down or pad_down
+    var just := down and not attack_was_down[0]
+    attack_was_down[0] = down
+    return just
 
 func _p1_ability_pressed() -> bool:
     var pads = Input.get_connected_joypads()
-    return _key_just_pressed(KEY_Q) or (pads.size() > 0 and _joy_just_pressed(pads[0], JOY_BUTTON_X))
+    var pad_down := pads.size() > 0 and Input.is_joy_button_pressed(pads[0], JOY_BUTTON_X)
+    var key_down := Input.is_key_pressed(KEY_Q)
+    var down := key_down or pad_down
+    var just := down and not ability_was_down[0]
+    ability_was_down[0] = down
+    return just
 
 func _p2_attack_pressed() -> bool:
     var pads = Input.get_connected_joypads()
-    return _key_just_pressed(KEY_ENTER) or (pads.size() > 1 and _joy_just_pressed(pads[1], JOY_BUTTON_A))
+    var pad_down := pads.size() > 1 and Input.is_joy_button_pressed(pads[1], JOY_BUTTON_A)
+    var key_down := Input.is_key_pressed(KEY_ENTER)
+    var down := key_down or pad_down
+    var just := down and not attack_was_down[1]
+    attack_was_down[1] = down
+    return just
 
 func _p2_ability_pressed() -> bool:
     var pads = Input.get_connected_joypads()
-    return _key_just_pressed(KEY_SHIFT) or (pads.size() > 1 and _joy_just_pressed(pads[1], JOY_BUTTON_X))
+    var pad_down := pads.size() > 1 and Input.is_joy_button_pressed(pads[1], JOY_BUTTON_X)
+    var key_down := Input.is_key_pressed(KEY_SHIFT)
+    var down := key_down or pad_down
+    var just := down and not ability_was_down[1]
+    ability_was_down[1] = down
+    return just
 
 func _clamp_player(p: Vector2) -> Vector2:
     return Vector2(clamp(p.x, 235, 1365), clamp(p.y, 270, 690))
@@ -712,22 +595,18 @@ func _clamp_player(p: Vector2) -> Vector2:
 func _speed(character: int) -> float:
     return [260.0, 330.0, 270.0, 215.0, 250.0][character]
 
-func _bot_update(delta) -> void:
+func _bot_update(delta):
     var dir = p1 - p2
-    fighter_motion[1] = 1.0 if roots[1] <= 0.0 and dir.length() > 105.0 else 0.0
-    fighter_anim_time[1] += delta * (1.0 if fighter_motion[1] > 0.0 else 0.55)
-    var campaign_bonus = (campaign_chapter + 1) * 18 if mode == Mode.CAMPAIGN else 0
-    if roots[1] <= 0.0 and dir.length() > 105:
-        p2 += dir.normalized() * (150 + bot_level * 48 + campaign_bonus) * delta
+    if dir.length() > 105:
+        p2 += dir.normalized() * (150 + bot_level * 48) * delta
         facing[1] = dir.normalized()
-    elif roots[1] <= 0.0 and dir.length() < 65:
+    elif dir.length() < 65:
         p2 -= dir.normalized() * 90 * delta
     if attack_cd[1] <= 0 and dir.length() < 115: _melee(1)
-    var boss_chance = 0.008 + bot_level * 0.012 + (campaign_chapter * 0.006 if mode == Mode.CAMPAIGN else 0.0)
-    if ability_cd[1] <= 0 and dir.length() < 210 and randf() < boss_chance: _ability(1)
+    if ability_cd[1] <= 0 and dir.length() < 210 and randf() < (0.008 + bot_level * 0.012): _ability(1)
     p2 = _clamp_player(p2)
 
-func _melee(player: int) -> void:
+func _melee(player: int):
     if attack_cd[player] > 0: return
     attack_cd[player] = [0.48, 0.32, 0.55, 0.72, 0.52][char1 if player == 0 else char2]
     attack_flash[player] = 0.22
@@ -742,10 +621,11 @@ func _melee(player: int) -> void:
     var delta_pos = target - attacker
     if delta_pos.length() <= reach and facing[player].dot(delta_pos.normalized()) > 0.35:
         _damage(1-player, damage)
+        _play_sfx("hit")
         effects.append({"kind":"hit","pos":target,"life":0.25,"max":0.25,"color":Color("#ffe2a0")})
     effects.append({"kind":"slash","pos":attacker+dir*50,"dir":dir,"life":0.22,"max":0.22,"color":CHAR_COLORS[char1 if player == 0 else char2]})
 
-func _ability(player: int) -> void:
+func _ability(player: int):
     if ability_cd[player] > 0: return
     var character = char1 if player == 0 else char2
     var attacker = p1 if player == 0 else p2
@@ -754,7 +634,8 @@ func _ability(player: int) -> void:
     facing[player] = dir
     ability_cd[player] = [5.0, 4.0, 6.0, 7.0, 30.0][character]
     ability_flash[player] = 0.45
-    _play_sfx("ability")
+    var ability_sounds := ["knight_ability", "rogue_ability", "druid_ability", "guardian_ability", "prince_ability"]
+    _play_sfx(ability_sounds[character])
     match character:
         0: # Knight: shielded charge and heavy cleave
             if player == 0: p1 = _clamp_player(p1 + dir*135)
@@ -773,10 +654,12 @@ func _ability(player: int) -> void:
         3: # Guardian: ground slam
             if (target-attacker).length() < 205: _damage(1-player, 34)
             effects.append({"kind":"slam","pos":attacker,"life":0.55,"max":0.55,"color":Color("#f1bd65")})
-        4: # Dark Prince: ten-second shadow dominion (30s cooldown)
+        4: # Dark Prince: ten-second shadow dominion
+            _play_sfx("shadow")
             var zone_center = attacker.lerp(target, 0.42)
             dark_zones[player] = {"center": zone_center, "radius": 285.0, "life": 10.0}
             dark_zone_ticks[player] = 0.25
+            status_text = "ABYSS DOMINION • ВЛАДЕНИЯ БЕЗДНЫ"
             effects.append({"kind":"shadow_burst","pos":zone_center,"life":0.9,"max":0.9,"color":Color("#9b72d6")})
 
 func _is_dark_prince_empowered(player: int) -> bool:
@@ -786,12 +669,15 @@ func _is_dark_prince_empowered(player: int) -> bool:
     var pos = p1 if player == 0 else p2
     return pos.distance_to(dark_zones[player].center) <= float(dark_zones[player].radius)
 
-func _update_dark_zones(delta: float) -> void:
+func _update_dark_zones(delta: float):
     for owner in range(2):
         if dark_zones[owner].is_empty(): continue
         dark_zones[owner].life = max(0.0, float(dark_zones[owner].life) - delta)
         dark_zone_ticks[owner] -= delta
         if dark_zones[owner].life <= 0.0:
+            var ending_center: Vector2 = dark_zones[owner].center
+            _play_sfx("shadow_end")
+            effects.append({"kind":"shadow_burst","pos":ending_center,"life":0.55,"max":0.55,"color":Color("#7650a8")})
             dark_zones[owner] = {}
             continue
         if dark_zone_ticks[owner] <= 0.0:
@@ -804,171 +690,61 @@ func _update_dark_zones(delta: float) -> void:
                 var tentacle_pos = center + Vector2(cos(angle), sin(angle)) * radius * 0.68
                 if enemy.distance_to(tentacle_pos) < 43.0:
                     _damage(1-owner, 5.0)
+                    _play_sfx("tentacle")
                     effects.append({"kind":"hit","pos":enemy,"life":0.2,"max":0.2,"color":Color("#a77be8")})
                     break
 
-func _damage(player: int, amount: float) -> void:
-    _play_sfx("hit")
-    if player == 0:
-        if mode == Mode.CAMPAIGN: amount *= 1.0 + float(campaign_chapter) * 0.08
-        hp1 = max(0.0, hp1-amount)
-    else:
-        hp2 = max(0.0, hp2-amount)
+func _damage(player: int, amount: float):
+    if player == 0: hp1 = max(0.0, hp1-amount)
+    else: hp2 = max(0.0, hp2-amount)
 
-func _update_effects(delta) -> void:
+func _update_effects(delta):
     for i in range(effects.size()-1,-1,-1):
         effects[i].life -= delta
         if effects[i].life <= 0: effects.remove_at(i)
 
-func _update_hud() -> void:
+func _update_hud():
     hp1_bar.value = hp1
     hp2_bar.value = hp2
-    hp1_name.text = CHAR_NAMES[char1]
-    hp2_name.text = CHAR_NAMES[char2]
-    hp1_portrait.texture = CHAR_TEXTURES[char1]
-    hp2_portrait.texture = CHAR_TEXTURES[char2]
-    ability1_label.text = "Способность: ГОТОВА" if ability_cd[0] <= 0.0 else "Способность: %.1f с" % ability_cd[0]
-    ability2_label.text = "Способность: ГОТОВА" if ability_cd[1] <= 0.0 else "Способность: %.1f с" % ability_cd[1]
     timer_label.text = "%02d:%02d" % [int(round_time/60), int(round_time)%60]
-    if combat_status_label != null:
-        combat_status_label.text = status_text if (hp1 <= 0.0 or hp2 <= 0.0 or round_time <= 0.0) else ""
+    var p1_name := game_layer.find_child("PlayerOneName", true, false) as Label
+    var p2_name := game_layer.find_child("PlayerTwoName", true, false) as Label
+    if p1_name: p1_name.text = CHAR_NAMES[char1].to_upper()
+    if p2_name: p2_name.text = CHAR_NAMES[char2].to_upper()
+    portrait1.texture = CHAR_PORTRAITS[char1]
+    portrait2.texture = CHAR_PORTRAITS[char2]
+    var p1_cd := "ГОТОВО" if ability_cd[0] <= 0.0 else "%.1f СЕК" % ability_cd[0]
+    var p2_cd := "ГОТОВО" if ability_cd[1] <= 0.0 else "%.1f СЕК" % ability_cd[1]
+    skill1_label.text = "SPACE / A • УДАР     Q / X • СПОСОБНОСТЬ: " + p1_cd
+    skill2_label.text = "ENTER / A • УДАР     SHIFT / X • СПОСОБНОСТЬ: " + p2_cd
 
-func _send_remote_state() -> void:
+func _send_remote_state():
     net_send_timer += get_process_delta_time()
     if net_send_timer > 0.05:
         net_send_timer = 0
         rpc_id(1, "_receive_remote_position", p1)
 
 @rpc("any_peer","call_remote","unreliable")
-func _receive_remote_position(pos: Vector2) -> void:
+func _receive_remote_position(pos: Vector2):
     if multiplayer.is_server(): p2 = _clamp_player(pos)
 
-func _setup_fighter_sprites() -> void:
-    var normal_shader: Shader = load("res://shaders/fighter_surface.gdshader") as Shader
-    var prince_shader: Shader = load("res://shaders/void_prince.gdshader") as Shader
-    for player_index: int in range(2):
-        var fighter: Sprite2D = Sprite2D.new()
-        fighter.texture = CHAR_TEXTURES[0]
-        fighter.centered = true
-        fighter.z_index = 2
-        fighter.visible = false
-        var shader_material: ShaderMaterial = ShaderMaterial.new()
-        shader_material.shader = normal_shader
-        fighter.material = shader_material
-        add_child(fighter)
-        fighter_sprites.append(fighter)
-        fighter_materials.append(shader_material)
-    # Cache both shader resources so changing fighters never requires disk access.
-    set_meta("normal_fighter_shader", normal_shader)
-    set_meta("prince_fighter_shader", prince_shader)
-
-func _sync_fighter_sprites(tick: float) -> void:
-    if fighter_sprites.size() != 2:
-        return
-    var positions: Array[Vector2] = [p1, p2]
-    var characters: Array[int] = [char1, char2]
-    for player_index: int in range(2):
-        var fighter: Sprite2D = fighter_sprites[player_index]
-        var character_index: int = clampi(characters[player_index], 0, CHAR_TEXTURES.size() - 1)
-        var moving: bool = fighter_motion[player_index] > 0.0
-        var phase: float = fighter_anim_time[player_index] * (10.0 if moving else 2.2)
-        var bob: float = sin(phase) * (5.0 if moving else 2.0)
-        var sway: float = sin(phase * 0.5) * (3.0 if moving else 1.2)
-        var pulse: float = 1.0 + sin(tick * 2.0 + float(player_index)) * 0.012
-        var width: float = (176.0 if character_index == 4 else 184.0) * pulse
-        var height: float = (230.0 if character_index == 4 else 236.0) * pulse
-        var attack_ratio: float = clampf(attack_flash[player_index] / 0.22, 0.0, 1.0)
-        var lunge: Vector2 = facing[player_index] * attack_ratio * 9.0
-        var texture_size: Vector2 = CHAR_TEXTURES[character_index].get_size()
-        fighter.texture = CHAR_TEXTURES[character_index]
-        fighter.position = Vector2(positions[player_index].x + sway + lunge.x, positions[player_index].y - bob + lunge.y - height * 0.03)
-        fighter.scale = Vector2(width / texture_size.x, height / texture_size.y)
-        fighter.visible = mode != Mode.MENU
-        var shader_material: ShaderMaterial = fighter_materials[player_index]
-        var desired_shader: Shader = (get_meta("prince_fighter_shader") as Shader) if character_index == 4 else (get_meta("normal_fighter_shader") as Shader)
-        if shader_material.shader != desired_shader:
-            shader_material.shader = desired_shader
-        shader_material.set_shader_parameter("time", tick)
-        shader_material.set_shader_parameter("accent_color", CHAR_COLORS[character_index])
-        shader_material.set_shader_parameter("intensity", 1.0 if character_index == 4 else 0.38)
-
-func _draw_fighter_sprite(player: int, world_pos: Vector2, character: int, tick: float) -> void:
-    # Painterly 512x640 transparent character art, animated with a subtle idle/breath cycle.
-    var moving := fighter_motion[player] > 0.0
-    var phase := fighter_anim_time[player] * (10.0 if moving else 2.2)
-    var bob := sin(phase) * (5.0 if moving else 2.0)
-    var sway := sin(phase * 0.5) * (3.0 if moving else 1.2)
-    var pulse := 1.0 + sin(tick * 2.0 + float(player)) * 0.012
-    var w := (176.0 if character == 4 else 184.0) * pulse
-    var h := (230.0 if character == 4 else 236.0) * pulse
-    var foot_y := world_pos.y + 46.0
-    var shadow_color := Color(0.10, 0.045, 0.16, 0.32) if character == 4 else Color(0.015, 0.02, 0.03, 0.38)
-    draw_set_transform(Vector2(world_pos.x, foot_y), 0.0, Vector2(1.0, 0.38))
-    draw_circle(Vector2.ZERO, 48.0 if character == 3 else 42.0, shadow_color)
-    draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-    if character == 4:
-        for aura_index in range(3):
-            var aura_phase := tick * 1.25 + float(aura_index) * TAU / 3.0
-            var aura_pos := world_pos + Vector2(cos(aura_phase) * (58.0 + 5.0 * sin(tick * 2.0)), -34.0 + sin(aura_phase) * 35.0)
-            draw_circle(aura_pos, 13.0 + 3.0 * sin(tick * 3.0 + aura_index), Color(0.38, 0.16, 0.62, 0.16))
-    else:
-        draw_circle(world_pos + Vector2(0, 12), 55.0, Color(CHAR_COLORS[character].r, CHAR_COLORS[character].g, CHAR_COLORS[character].b, 0.055))
-    var attack_ratio := clamp(attack_flash[player] / 0.22, 0.0, 1.0)
-    var lunge := facing[player] * attack_ratio * 9.0
-    var sprite_rect := Rect2(world_pos.x - w * 0.5 + sway + lunge.x, world_pos.y - h * 0.53 - bob + lunge.y, w * (1.0 + attack_ratio * 0.025), h * (1.0 - attack_ratio * 0.018))
-    # Character texture is rendered by a dedicated Sprite2D with a per-hero shader.
-    if attack_flash[player] > 0.0:
-        var flash_alpha := clamp(attack_flash[player] / 0.22, 0.0, 1.0) * 0.22
-        draw_circle(world_pos + facing[player] * 38.0, 62.0, Color(1.0, 0.78, 0.42, flash_alpha))
-
-func _draw_prince_tendrils(center: Vector2, tick: float) -> void:
-    for n in range(8):
-        var angle = TAU * float(n) / 8.0 + sin(tick * 2.1 + n) * 0.13
-        var reach = 72.0 + sin(tick * 3.0 + n * 1.7) * 17.0
-        var direction = Vector2(cos(angle), sin(angle))
-        var base = center + direction * 43.0
-        var bend = center + direction.rotated(sin(tick * 2.7 + n) * 0.24) * reach * 0.72 + Vector2(0, sin(tick * 4.0 + n) * 9.0)
-        var tip = center + direction * reach + Vector2(0, sin(tick * 3.5 + n * 0.8) * 15.0)
-        draw_line(base, bend, Color(0.10, 0.035, 0.17, 0.9), 8.0)
-        draw_line(bend, tip, Color(0.20, 0.08, 0.31, 0.92), 5.0)
-        draw_circle(tip, 4.0, Color(0.52, 0.30, 0.77, 0.8))
-
-func _draw() -> void:
-    draw_texture_rect(ARENA, Rect2(0,0,1600,900), false)
+func _draw():
     if mode == Mode.MENU:
-        draw_rect(Rect2(0, 0, 1600, 900), Color(0.025, 0.035, 0.065, 0.76), true)
-        for i in range(18):
-            var x = float(i) * 96.0
-            draw_line(Vector2(x, 0), Vector2(x - 120, 900), Color(0.65, 0.48, 0.25, 0.07), 2)
-        draw_circle(Vector2(800, 265), 190, Color(0.52, 0.31, 0.16, 0.08))
-        draw_arc(Vector2(800, 265), 190, 0, TAU, 96, Color(0.76, 0.58, 0.31, 0.18), 3)
-        # Дальний силуэт разрушенной крепости для заставки.
-        var stone = Color(0.035, 0.045, 0.065, 0.94)
-        draw_rect(Rect2(0, 560, 1600, 340), stone, true)
-        draw_rect(Rect2(115, 390, 220, 260), stone, true)
-        draw_rect(Rect2(1265, 365, 225, 285), stone, true)
-        draw_rect(Rect2(420, 470, 760, 210), stone, true)
-        draw_colored_polygon(PackedVector2Array([Vector2(105, 390), Vector2(225, 275), Vector2(345, 390)]), stone)
-        draw_colored_polygon(PackedVector2Array([Vector2(1250, 365), Vector2(1375, 245), Vector2(1505, 365)]), stone)
-        draw_colored_polygon(PackedVector2Array([Vector2(405, 470), Vector2(800, 315), Vector2(1195, 470)]), stone)
-        for wx in [175, 245, 1325, 1400, 600, 760, 910, 1060]:
-            draw_rect(Rect2(wx, 465 if wx < 400 or wx > 1200 else 535, 24, 54), Color(0.78, 0.42, 0.15, 0.32), true)
-        draw_rect(Rect2(0, 640, 1600, 260), Color(0.02, 0.025, 0.04, 0.42), true)
-        for i in range(34):
-            var px = fposmod(float(i) * 173.0 + Time.get_ticks_msec() * 0.012, 1600.0)
-            var py = fposmod(float(i) * 71.0 + Time.get_ticks_msec() * 0.004, 900.0)
-            draw_circle(Vector2(px, py), 1.5 + float(i % 3) * 0.6, Color(0.85, 0.68, 0.42, 0.22))
+        _draw_menu_backdrop()
         return
-    # Мягкие факельные ореолы и частицы пыли на арене.
-    var tick = Time.get_ticks_msec() * 0.001
-    for torch in [Vector2(350, 155), Vector2(1250, 155), Vector2(350, 675), Vector2(1250, 675)]:
-        var flicker = 0.82 + 0.18 * sin(tick * 8.0 + torch.x)
-        draw_circle(torch, 52.0 * flicker, Color(1.0, 0.56, 0.18, 0.055))
-        draw_circle(torch, 21.0 * flicker, Color(1.0, 0.68, 0.28, 0.10))
-    for i in range(26):
-        var dust_x = fposmod(float(i) * 197.0 + tick * (9.0 + float(i % 5)), 1600.0)
-        var dust_y = fposmod(float(i) * 83.0 - tick * (4.0 + float(i % 4)), 900.0)
-        draw_circle(Vector2(dust_x, dust_y), 1.3, Color(0.95, 0.82, 0.61, 0.24))
+    draw_texture_rect(ARENA, Rect2(0,0,1600,900), false)
+    _draw_arena_ambience()
+    if campaign_active:
+        _draw_campaign_arena_tint()
+        if campaign_event_warning > 0.0:
+            var warn_color := _campaign_event_color()
+            var pulse := 1.0 + 0.12 * sin(visual_time * 13.0)
+            draw_circle(campaign_event_pos, 78.0 * pulse, Color(warn_color.r, warn_color.g, warn_color.b, 0.16))
+            draw_arc(campaign_event_pos, 78.0 * pulse, 0, TAU, 48, warn_color, 7.0)
+        if campaign_event_flash > 0.0:
+            var flash_ratio := campaign_event_flash / 0.45
+            draw_circle(campaign_event_pos, 120.0 * (1.0 - flash_ratio) + 25.0, Color(0.8, 0.7, 1.0, 0.22 * flash_ratio))
+            draw_arc(campaign_event_pos, 120.0 * (1.0 - flash_ratio) + 25.0, 0, TAU, 48, _campaign_event_color(), 8.0)
     for owner in range(2):
         if not dark_zones[owner].is_empty():
             var zc: Vector2 = dark_zones[owner].center
@@ -979,15 +755,24 @@ func _draw() -> void:
             for n in range(8):
                 var angle = TAU * float(n) / 8.0
                 var base = zc + Vector2(cos(angle),sin(angle))*zr*0.68
-                var tip = base + Vector2(cos(angle+0.5),sin(angle+0.5))*55
-                draw_line(base, tip, Color(0.13,0.07,0.22,0.95*fade), 18)
-                draw_line(base, tip, Color(0.55,0.31,0.83,0.9*fade), 4)
-    _draw_fighter_sprite(0, p1, char1, tick)
-    _draw_fighter_sprite(1, p2, char2, tick)
-    if char1 == 4 and not dark_zones[0].is_empty():
-        _draw_prince_tendrils(p1, tick)
-    if char2 == 4 and not dark_zones[1].is_empty():
-        _draw_prince_tendrils(p2, tick)
+                var tangent = Vector2(-sin(angle), cos(angle))
+                var points := PackedVector2Array()
+                for segment in range(9):
+                    var t := float(segment) / 8.0
+                    var sway := sin(visual_time * 3.1 + float(n) * 1.7 + t * 4.0) * 24.0 * t
+                    var reach := 42.0 + 42.0 * sin(visual_time * 1.8 + float(n))
+                    points.append(base + Vector2(cos(angle+0.45),sin(angle+0.45))*reach*t + tangent*sway)
+                draw_polyline(points, Color(0.055,0.025,0.095,0.96*fade), 20.0, true)
+                draw_polyline(points, Color(0.48,0.25,0.72,0.9*fade), 5.0, true)
+                draw_circle(points[8], 8.0, Color(0.75,0.56,1.0,0.9*fade))
+    draw_circle(p1+Vector2(0,32),45,Color(0.65,0.12,0.10,0.22))
+    draw_circle(p2+Vector2(0,32),45,Color(0.12,0.38,0.78,0.22))
+    if char1 == 4:
+        _draw_prince_aura(p1)
+    if char2 == 4:
+        _draw_prince_aura(p2)
+    draw_texture(CHAR_TEXTURES[char1], p1-Vector2(96,96))
+    draw_texture(CHAR_TEXTURES[char2], p2-Vector2(96,96))
     if _is_dark_prince_empowered(0):
         draw_arc(p1, 76, 0, TAU, 48, Color("#bd91ff"), 5)
     if _is_dark_prince_empowered(1):
@@ -1012,24 +797,359 @@ func _draw() -> void:
                 draw_line(fx.pos,fx.pos+Vector2(cos(angle),sin(angle))*78*(1-ratio*0.35),Color(0.55,0.78,0.32,ratio),8)
         elif fx.kind == "slam":
             draw_arc(fx.pos,100*(1-ratio*0.3),0,TAU,48,Color(0.95,0.68,0.32,ratio),10)
-        elif fx.kind == "shadow_trail":
-            var trail_color: Color = fx.get("color", Color("#7650a8"))
-            draw_circle(fx.pos, 24.0 * ratio, Color(trail_color.r, trail_color.g, trail_color.b, 0.24 * ratio))
-        elif fx.kind == "shadow_burst":
-            draw_circle(fx.pos, 250.0 * (1.0 - ratio), Color(0.28, 0.10, 0.48, 0.10 * ratio))
-            draw_arc(fx.pos, 250.0 * (1.0 - ratio), 0, TAU, 64, Color(0.68, 0.43, 0.92, ratio), 5.0)
         elif fx.kind == "shadow_burst":
             draw_circle(fx.pos, 260*(1-ratio)+30, Color(0.22,0.10,0.38,0.28*ratio))
             draw_arc(fx.pos, 260*(1-ratio)+30, 0, TAU, 64, Color(0.68,0.42,0.95,ratio), 10)
-        elif fx.kind == "shadow_trail":
-            draw_circle(fx.pos, 18.0 * ratio + 3.0, Color(0.18, 0.07, 0.27, 0.25 * ratio))
-            draw_circle(fx.pos + Vector2(0, 5), 7.0 * ratio, Color(0.42, 0.22, 0.62, 0.35 * ratio))
     if attack_flash[0] > 0:
         draw_arc(p1+facing[0]*42,68,-1.3,1.3,20,CHAR_COLORS[char1],8)
     if attack_flash[1] > 0:
         draw_arc(p2+facing[1]*42,68,PI-1.3,PI+1.3,20,CHAR_COLORS[char2],8)
     draw_string(ThemeDB.fallback_font,Vector2(460,850),status_text,HORIZONTAL_ALIGNMENT_CENTER,700,18,Color("#fff0d0"))
-    if mode == Mode.CAMPAIGN:
-        draw_string(ThemeDB.fallback_font, Vector2(650, 112), CHAPTER_NAMES[campaign_chapter] + "  ·  БОСС: " + CHAPTER_BOSSES[campaign_chapter], HORIZONTAL_ALIGNMENT_CENTER, 700, 18, Color("#f0d29c"))
     if roots[0] > 0: draw_string(ThemeDB.fallback_font,p1+Vector2(-25,-70),"ROOTED",HORIZONTAL_ALIGNMENT_CENTER,100,14,Color("#b4e47d"))
     if roots[1] > 0: draw_string(ThemeDB.fallback_font,p2+Vector2(-25,-70),"ROOTED",HORIZONTAL_ALIGNMENT_CENTER,100,14,Color("#b4e47d"))
+
+
+func _update_campaign_event(delta: float) -> void:
+    if not campaign_active:
+        return
+    campaign_event_flash = max(0.0, campaign_event_flash - delta)
+    if campaign_event_ready:
+        campaign_event_warning = max(0.0, campaign_event_warning - delta)
+        if campaign_event_warning <= 0.0:
+            _resolve_campaign_event()
+            campaign_event_ready = false
+            campaign_event_timer = [7.5, 8.0, 7.0, 8.5, 6.5][campaign_chapter]
+        return
+    campaign_event_timer -= delta
+    if campaign_event_timer <= 0.0:
+        campaign_event_pos = Vector2(randf_range(340.0, 1260.0), randf_range(350.0, 650.0))
+        campaign_event_warning = 1.35
+        campaign_event_ready = true
+        _play_sfx("magic")
+
+func _resolve_campaign_event() -> void:
+    campaign_event_flash = 0.45
+    var dist1 := p1.distance_to(campaign_event_pos)
+    var dist2 := p2.distance_to(campaign_event_pos)
+    match campaign_chapter:
+        0: # Falling masonry in the ruined fortress.
+            if dist1 < 88.0: _damage(0, 12.0)
+            if dist2 < 88.0: _damage(1, 12.0)
+            effects.append({"kind":"slam", "pos":campaign_event_pos, "life":0.55, "max":0.55, "color":Color("#d59a63")})
+        1: # The seal sends a short-range pulse.
+            if dist1 < 170.0: _damage(0, 9.0)
+            if dist2 < 170.0: _damage(1, 9.0)
+            effects.append({"kind":"shadow_burst", "pos":campaign_event_pos, "life":0.7, "max":0.7, "color":Color("#d7b56d")})
+        2: # Cursed roots briefly hold anyone caught in the patch.
+            if dist1 < 105.0:
+                roots[0] = max(roots[0], 1.25)
+                _damage(0, 6.0)
+            if dist2 < 105.0:
+                roots[1] = max(roots[1], 1.25)
+                _damage(1, 6.0)
+            effects.append({"kind":"roots", "pos":campaign_event_pos, "life":0.8, "max":0.8, "color":Color("#9cc76a")})
+        3: # The ancient oath releases a defensive shockwave.
+            if dist1 < 145.0: _damage(0, 10.0)
+            if dist2 < 145.0: _damage(1, 10.0)
+            effects.append({"kind":"slam", "pos":campaign_event_pos, "life":0.6, "max":0.6, "color":Color("#e0bd79")})
+        4: # The rift surges unpredictably around its focal point.
+            if dist1 < 190.0: _damage(0, 14.0)
+            if dist2 < 190.0: _damage(1, 14.0)
+            effects.append({"kind":"shadow_burst", "pos":campaign_event_pos, "life":0.9, "max":0.9, "color":Color("#9d73d8")})
+    _play_sfx("hit")
+
+func _campaign_event_color() -> Color:
+    return [Color("#d58b58"), Color("#d5b56e"), Color("#8dbb63"), Color("#d6c18b"), Color("#a47ad8")][campaign_chapter]
+
+func _draw_campaign_arena_tint() -> void:
+    var tint := [Color(0.28,0.08,0.035,0.10), Color(0.28,0.22,0.08,0.10), Color(0.08,0.22,0.07,0.12), Color(0.22,0.18,0.10,0.10), Color(0.16,0.06,0.28,0.14)][campaign_chapter]
+    draw_rect(Rect2(0,0,1600,900), tint)
+    if campaign_chapter == 2:
+        for i in range(5):
+            var mist_x := fposmod(float(i) * 370.0 + visual_time * 13.0, 1900.0) - 150.0
+            draw_circle(Vector2(mist_x, 600.0 + sin(visual_time + i) * 28.0), 110.0, Color(0.36,0.58,0.28,0.055))
+    elif campaign_chapter == 4:
+        for i in range(5):
+            var ray_angle := visual_time * 0.06 + TAU * float(i) / 5.0
+            var ray_end := Vector2(800, 460) + Vector2(cos(ray_angle), sin(ray_angle)) * 520.0
+            draw_line(Vector2(800, 460), ray_end, Color(0.52,0.25,0.78,0.10), 22.0)
+
+func _load_campaign_progress() -> void:
+    if not FileAccess.file_exists(CAMPAIGN_SAVE):
+        campaign_unlocked = 0
+        return
+    var file := FileAccess.open(CAMPAIGN_SAVE, FileAccess.READ)
+    if file:
+        campaign_unlocked = clampi(int(file.get_32()), 0, 4)
+
+func _save_campaign_progress() -> void:
+    var file := FileAccess.open(CAMPAIGN_SAVE, FileAccess.WRITE)
+    if file:
+        file.store_32(campaign_unlocked)
+
+func _start_campaign() -> void:
+    _load_campaign_progress()
+    if campaign_select_dialog:
+        campaign_select_dialog.popup_centered()
+
+func _build_campaign_dialog() -> void:
+    campaign_select_dialog = AcceptDialog.new()
+    campaign_select_dialog.title = "Хроники Пепельного Королевства"
+    campaign_select_dialog.dialog_text = "Выбери открытую главу. Пройденные главы можно переигрывать."
+    campaign_select_dialog.min_size = Vector2i(620, 470)
+    campaign_select_dialog.confirmed.connect(_back_menu)
+    campaign_select_dialog.close_requested.connect(_back_menu)
+    menu_layer.add_child(campaign_select_dialog)
+    var list := VBoxContainer.new()
+    list.name = "ChapterList"
+    list.custom_minimum_size = Vector2(560, 390)
+    campaign_select_dialog.add_child(list)
+    for i in range(CAMPAIGN_NAMES.size()):
+        var chapter_button := Button.new()
+        chapter_button.text = ("✓  " if i < campaign_unlocked else ("▶  " if i == campaign_unlocked else "🔒  ")) + CAMPAIGN_NAMES[i]
+        chapter_button.custom_minimum_size = Vector2(0, 48)
+        chapter_button.disabled = i > campaign_unlocked
+        chapter_button.pressed.connect(_play_sfx.bind("button"))
+        chapter_button.pressed.connect(_launch_campaign_chapter.bind(i))
+        list.add_child(chapter_button)
+
+func _refresh_campaign_chapters() -> void:
+    if not campaign_select_dialog:
+        _build_campaign_dialog()
+        return
+    var list := campaign_select_dialog.get_node("ChapterList") as VBoxContainer
+    for i in range(list.get_child_count()):
+        var b := list.get_child(i) as Button
+        b.text = ("✓  " if i < campaign_unlocked else ("▶  " if i == campaign_unlocked else "🔒  ")) + CAMPAIGN_NAMES[i]
+        b.disabled = i > campaign_unlocked
+
+func _launch_campaign_chapter(chapter: int) -> void:
+    if chapter > campaign_unlocked:
+        return
+    campaign_chapter = chapter
+    bot_level = 1 if chapter < 2 else 2
+    char1 = chapter
+    char2 = CAMPAIGN_ENEMIES[chapter]
+    char1_option.select(char1)
+    char2_option.select(char2)
+    campaign_active = true
+    campaign_result_handled = false
+    campaign_pending_result = false
+    campaign_event_timer = 3.5
+    campaign_event_warning = 0.0
+    campaign_event_ready = false
+    campaign_event_flash = 0.0
+    campaign_select_dialog.hide()
+    _play_music("story")
+    campaign_story_dialog.dialog_text = "ГЛАВА " + str(chapter + 1) + " • " + CAMPAIGN_NAMES[chapter] + "\n\n" + CAMPAIGN_DESCRIPTIONS[chapter] + "\n\n" + CAMPAIGN_INTROS[chapter] + "\n\nПротивник: " + CHAR_NAMES[char2] + "\nЦель: " + CAMPAIGN_GOALS[chapter] + "\nНаграда: " + CAMPAIGN_REWARDS[chapter]
+    campaign_story_dialog.set_meta("story_phase", "intro")
+    campaign_story_dialog.popup_centered()
+
+func _begin_campaign_battle() -> void:
+    campaign_story_dialog.hide()
+    _start_game(Mode.BOT)
+    status_text = "КАМПАНИЯ • " + CAMPAIGN_NAMES[campaign_chapter]
+    _play_sfx("boss")
+
+func _show_campaign_result() -> void:
+    if not campaign_active or not campaign_pending_result:
+        return
+    campaign_story_dialog.dialog_text = "ГЛАВА ПРОЙДЕНА\n\n" + CAMPAIGN_OUTROS[campaign_chapter] + "\n\nНаграда: " + CAMPAIGN_REWARDS[campaign_chapter]
+    campaign_story_dialog.set_meta("story_phase", "outro")
+    _play_music("story")
+    campaign_story_dialog.popup_centered()
+
+func _show_campaign_fail() -> void:
+    if not campaign_active or not campaign_pending_result:
+        return
+    campaign_story_dialog.dialog_text = "ПОРАЖЕНИЕ\n\nГлава не пройдена. История и открытые главы сохранены. Можно попробовать ещё раз или вернуться к выбору глав."
+    campaign_story_dialog.set_meta("story_phase", "retry")
+    campaign_story_dialog.popup_centered()
+
+func _campaign_story_confirmed() -> void:
+    var phase := str(campaign_story_dialog.get_meta("story_phase", "intro"))
+    campaign_story_dialog.hide()
+    if phase == "intro":
+        _begin_campaign_battle()
+    elif phase == "outro":
+        campaign_pending_result = false
+        _refresh_campaign_chapters()
+        campaign_select_dialog.popup_centered()
+    elif phase == "retry":
+        campaign_pending_result = false
+        _refresh_campaign_chapters()
+        campaign_select_dialog.popup_centered()
+
+func _build_settings_dialog() -> void:
+    settings_dialog = AcceptDialog.new()
+    settings_dialog.title = "Настройки звука"
+    settings_dialog.dialog_text = "Громкость музыки и звуковых эффектов"
+    settings_dialog.min_size = Vector2i(560, 390)
+    menu_layer.add_child(settings_dialog)
+    var content := VBoxContainer.new()
+    content.custom_minimum_size = Vector2(480, 270)
+    settings_dialog.add_child(content)
+    var music_label := Label.new()
+    music_label.text = "Музыка"
+    content.add_child(music_label)
+    var music_slider := HSlider.new()
+    music_slider.min_value = 0.0
+    music_slider.max_value = 1.0
+    music_slider.step = 0.01
+    music_slider.value = music_volume
+    music_slider.value_changed.connect(func(value: float):
+        music_volume = value
+        _apply_volume()
+        _save_audio_settings()
+    )
+    content.add_child(music_slider)
+    var sfx_label := Label.new()
+    sfx_label.text = "Звуковые эффекты"
+    content.add_child(sfx_label)
+    var sfx_slider := HSlider.new()
+    sfx_slider.min_value = 0.0
+    sfx_slider.max_value = 1.0
+    sfx_slider.step = 0.01
+    sfx_slider.value = sfx_volume
+    sfx_slider.value_changed.connect(func(value: float):
+        sfx_volume = value
+        _apply_volume()
+        _save_audio_settings()
+    )
+    content.add_child(sfx_slider)
+    var controls_title := Label.new()
+    controls_title.text = "УПРАВЛЕНИЕ"
+    controls_title.add_theme_font_size_override("font_size", 18)
+    content.add_child(controls_title)
+    var controls := Label.new()
+    controls.text = "Игрок 1: WASD • Space / A — атака • Q / X — способность\nИгрок 2: стрелки • Enter / A — атака • Shift / X — способность\nГеймпад: левый стик — движение; A — атака; X — способность\nПервый подключённый контроллер — P1, второй — P2."
+    controls.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    content.add_child(controls)
+    var note := Label.new()
+    note.text = "Музыка и эффекты созданы специально для этой версии проекта."
+    note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    content.add_child(note)
+
+func _open_settings() -> void:
+    settings_dialog.popup_centered()
+
+func _setup_audio_buses() -> void:
+    # Dedicated buses keep the generated music and sound effects independent.
+    if AudioServer.get_bus_index("Music") < 0:
+        AudioServer.add_bus()
+        var music_bus := AudioServer.bus_count - 1
+        AudioServer.set_bus_name(music_bus, "Music")
+        AudioServer.set_bus_send(music_bus, "Master")
+    if AudioServer.get_bus_index("SFX") < 0:
+        AudioServer.add_bus()
+        var sfx_bus := AudioServer.bus_count - 1
+        AudioServer.set_bus_name(sfx_bus, "SFX")
+        AudioServer.set_bus_send(sfx_bus, "Master")
+    _apply_volume()
+
+func _apply_volume() -> void:
+    var music_bus := AudioServer.get_bus_index("Music")
+    var sfx_bus := AudioServer.get_bus_index("SFX")
+    if music_bus >= 0:
+        AudioServer.set_bus_volume_db(music_bus, linear_to_db(max(0.001, music_volume)))
+    if sfx_bus >= 0:
+        AudioServer.set_bus_volume_db(sfx_bus, linear_to_db(max(0.001, sfx_volume)))
+
+
+func _play_music(track: String) -> void:
+    if not music_player:
+        music_player = AudioStreamPlayer.new()
+        music_player.bus = "Music"
+        add_child(music_player)
+    var stream := load(AUDIO_FILES.get(track, AUDIO_FILES["menu"])) as AudioStreamWAV
+    if stream:
+        stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+        music_player.stream = stream
+        music_player.play()
+
+func _play_sfx(effect_name: String) -> void:
+    var stream := load(AUDIO_FILES.get(effect_name, AUDIO_FILES["button"])) as AudioStream
+    if not stream:
+        return
+    var player := AudioStreamPlayer.new()
+    player.bus = "SFX"
+    player.stream = stream
+    add_child(player)
+    player.finished.connect(player.queue_free)
+    player.play()
+
+func _play_button_and_action(action: Callable) -> void:
+    _play_sfx("button")
+    action.call()
+
+func _seed_embers() -> void:
+    for i in range(52):
+        ember_particles.append({
+            "pos": Vector2(randf_range(0, 1600), randf_range(0, 900)),
+            "speed": randf_range(8, 28),
+            "drift": randf_range(-9, 9),
+            "size": randf_range(1.0, 3.0),
+            "alpha": randf_range(0.18, 0.65)
+        })
+
+func _update_embers(delta: float) -> void:
+    for i in range(ember_particles.size()):
+        var particle: Dictionary = ember_particles[i]
+        var pos: Vector2 = particle.pos
+        pos.y -= float(particle.speed) * delta
+        pos.x += sin(visual_time * 0.8 + float(i)) * float(particle.drift) * delta
+        if pos.y < -10:
+            pos.y = 910
+            pos.x = randf_range(0, 1600)
+        particle.pos = pos
+        ember_particles[i] = particle
+
+func _draw_menu_backdrop() -> void:
+    draw_texture_rect(MENU_BACKDROP, Rect2(0, 0, 1600, 900), false)
+    # Dark cinematic overlay keeps menu labels readable while preserving the supplied artwork.
+    draw_rect(Rect2(0, 0, 1600, 900), Color(0.018, 0.022, 0.045, 0.40))
+    draw_rect(Rect2(0, 0, 1600, 900), Color(0.0, 0.0, 0.0, 0.16))
+    for i in range(7):
+        var fx := fposmod(float(i) * 260.0 + visual_time * 18.0, 1900.0) - 150.0
+        draw_circle(Vector2(fx, 660 + sin(visual_time * 0.35 + i) * 25), 95, Color(0.55, 0.60, 0.72, 0.055))
+    for particle in ember_particles:
+        var pos: Vector2 = particle.pos
+        draw_circle(pos, float(particle.size), Color(1.0, 0.58, 0.22, float(particle.alpha)))
+    draw_rect(Rect2(0, 0, 1600, 900), Color(0, 0, 0, 0.12))
+
+func _draw_arena_ambience() -> void:
+    var torch_positions := [Vector2(350, 150), Vector2(1250, 150), Vector2(350, 650), Vector2(1250, 650)]
+    for i in range(torch_positions.size()):
+        var torch_pos: Vector2 = torch_positions[i]
+        var flicker := 1.0 + 0.14 * sin(visual_time * 13.0 + float(i) * 2.1)
+        draw_circle(torch_pos, 92.0 * flicker, Color(1.0, 0.58, 0.2, 0.055))
+        draw_circle(torch_pos, 32.0 * flicker, Color(1.0, 0.66, 0.28, 0.10))
+    for i in range(ember_particles.size()):
+        if i % 3 != 0:
+            continue
+        var particle: Dictionary = ember_particles[i]
+        var pos: Vector2 = particle.pos
+        var alpha := float(particle.alpha) * 0.35
+        draw_circle(pos, float(particle.size) * 0.7, Color(0.92, 0.68, 0.38, alpha))
+
+func _draw_prince_aura(pos: Vector2) -> void:
+    var pulse := 1.0 + 0.08 * sin(visual_time * 5.0)
+    draw_circle(pos + Vector2(0, 12), 86 * pulse, Color(0.12,0.035,0.2,0.22))
+    for i in range(6):
+        var angle := visual_time * (0.45 if i % 2 == 0 else -0.35) + TAU * float(i) / 6.0
+        var start := pos + Vector2(cos(angle), sin(angle)) * 48
+        var end := pos + Vector2(cos(angle+0.5), sin(angle+0.5)) * (92 + 10*sin(visual_time*3+i))
+        draw_line(start, end, Color(0.38,0.16,0.58,0.42), 7)
+
+
+func _load_audio_settings() -> void:
+    var config := ConfigFile.new()
+    if config.load("user://settings.cfg") == OK:
+        music_volume = clampf(float(config.get_value("audio", "music", 0.75)), 0.0, 1.0)
+        sfx_volume = clampf(float(config.get_value("audio", "sfx", 0.85)), 0.0, 1.0)
+
+func _save_audio_settings() -> void:
+    var config := ConfigFile.new()
+    config.set_value("audio", "music", music_volume)
+    config.set_value("audio", "sfx", sfx_volume)
+    config.save("user://settings.cfg")

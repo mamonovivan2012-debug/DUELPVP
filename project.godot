@@ -4,7 +4,7 @@ config_version=5
 config/name="Arena Duel"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
-config/description="Arena Duel: five fighters, local PvP, PvB, campaign chapters and original audio."
+config/description="Arena Duel: fantasy arena combat, local PvP, PvB and story campaign."
 
 [display]
 window/size/viewport_width=1600
