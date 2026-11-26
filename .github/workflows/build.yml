@@ -11,20 +11,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download Godot
+
+      - name: Download Godot 4.3 and export templates
+        shell: bash
         run: |
-          wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip -O godot.zip
+          set -euo pipefail
+          GODOT_VERSION="4.3-stable"
+          TEMPLATE_VERSION="4.3.stable"
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip" -O godot.zip
           unzip -q godot.zip -d godot
-          chmod +x godot/Godot_v4.3-stable_linux.x86_64
-          wget -q https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz -O templates.tpz
-          mkdir -p ~/.local/share/godot/export_templates/4.3.stable
+          chmod +x "godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_export_templates.tpz" -O templates.tpz
+          mkdir -p ~/.local/share/godot/export_templates/${TEMPLATE_VERSION}
           unzip -q templates.tpz -d templates
-          cp -r templates/templates/* ~/.local/share/godot/export_templates/4.3.stable/
-      - name: Import assets
+          cp -r templates/templates/* ~/.local/share/godot/export_templates/${TEMPLATE_VERSION}/
+
+      - name: Import project assets
         run: godot/Godot_v4.3-stable_linux.x86_64 --headless --editor --path . --quit
-      - name: Export Windows
-        run: mkdir -p build && godot/Godot_v4.3-stable_linux.x86_64 --headless --path . --export-release "Windows Desktop" build/ArenaDuel.exe
-      - uses: actions/upload-artifact@v4
+
+      - name: Validate project scripts
+        run: godot/Godot_v4.3-stable_linux.x86_64 --headless --path . --editor --quit
+
+      - name: Smoke test main scene
+        run: godot/Godot_v4.3-stable_linux.x86_64 --headless --path . --quit-after 120
+
+      - name: Export self-contained Windows EXE
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          godot/Godot_v4.3-stable_linux.x86_64 --headless --path . --export-release "Windows Desktop" build/ArenaDuel.exe
+          test -s build/ArenaDuel.exe
+          ls -lh build/ArenaDuel.exe
+
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
         with:
           name: ArenaDuel-Windows
           path: build/ArenaDuel.exe
+          if-no-files-found: error
