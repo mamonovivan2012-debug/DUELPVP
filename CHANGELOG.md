@@ -43,3 +43,14 @@
 - Corrected movement lock while rooted for both fighters.
 
 **Verification:** ZIP integrity and referenced resource paths are checked. A Godot executable is not available in this environment, so engine parsing and an in-game playtest are not claimed.
+
+
+## Gameplay animation & weapon pass
+- Added six-state, four-frame animation atlases for all five fighters (idle, walk, attack, hurt, dodge, block).
+- Replaced the single-image battle draw with state-driven atlas frame playback.
+- Added unique weapon art: Knight longsword, Rogue twin daggers, Druid rune staff, Guardian war hammer and shield, Dark Prince void blade.
+- Replaced generic melee slash visuals with character-specific weapon trails.
+- Added dodge and block controls for keyboard and controllers; block reduces incoming damage.
+- Preserved existing character abilities, local PvP/PvB and Abyss Dominion values.
+- Godot runtime validation is still required; no engine binary is available in this build environment.
+- Note: animation atlas frames are pose-transformed from existing character illustrations; this is frame-based state animation, not a hand-drawn frame-by-frame character rig.

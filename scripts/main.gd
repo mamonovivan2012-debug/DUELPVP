@@ -12,6 +12,22 @@ const CHAR_TEXTURES = [
     preload("res://assets/dark_fantasy/fighter_guardian.png"),
     preload("res://assets/dark_fantasy/fighter_dark_prince.png")
 ]
+# Six-row, four-frame-per-state atlases: idle, walk, attack, hurt, dodge, block.
+const CHAR_ANIM_SHEETS = [
+    preload("res://assets/dark_fantasy/anim_knight_sheet.png"),
+    preload("res://assets/dark_fantasy/anim_rogue_sheet.png"),
+    preload("res://assets/dark_fantasy/anim_druid_sheet.png"),
+    preload("res://assets/dark_fantasy/anim_guardian_sheet.png"),
+    preload("res://assets/dark_fantasy/anim_dark_prince_sheet.png")
+]
+const WEAPON_TEXTURES = [
+    preload("res://assets/dark_fantasy/weapon_knight_sword.png"),
+    preload("res://assets/dark_fantasy/weapon_rogue_dagger.png"),
+    preload("res://assets/dark_fantasy/weapon_druid_staff.png"),
+    preload("res://assets/dark_fantasy/weapon_guardian_hammer.png"),
+    preload("res://assets/dark_fantasy/weapon_dark_prince_blade.png")
+]
+const GUARDIAN_SHIELD = preload("res://assets/dark_fantasy/weapon_guardian_shield.png")
 const CHAR_NAMES = ["Рыцарь", "Разбойник", "Друид", "Страж", "Тёмный принц"]
 const CHAR_COLORS = [Color("#d65b43"), Color("#56b6a0"), Color("#8bbd62"), Color("#d5a64d"), Color("#9b72d6")]
 
@@ -76,10 +92,15 @@ var ember_particles: Array[Dictionary] = []
 # Combat presentation: procedural pose animation layered over the illustrated fighters.
 var fighter_anim_time := [0.0, 0.0]
 var attack_anim_timer := [0.0, 0.0]
+var attack_anim_duration := [0.34, 0.34]
 var hurt_anim_timer := [0.0, 0.0]
 var move_blend := [0.0, 0.0]
 var combo_index := [0, 0]
 var combo_window := [0.0, 0.0]
+var dodge_timer := [0.0, 0.0]
+var dodge_cd := [0.0, 0.0]
+var dodge_was_down := [false, false]
+var block_active := [false, false]
 var screen_shake := 0.0
 var screen_shake_seed := 0.0
 var draw_offset := Vector2.ZERO
@@ -544,10 +565,17 @@ func _start_game(new_mode: int):
     dark_zone_ticks = [0.0, 0.0]
     attack_was_down = [false, false]
     ability_was_down = [false, false]
+    dodge_was_down = [false, false]
+    dodge_timer = [0.0, 0.0]
+    dodge_cd = [0.0, 0.0]
+    block_active = [false, false]
+    attack_anim_timer = [0.0, 0.0]
+    attack_anim_duration = [0.34, 0.34]
+    hurt_anim_timer = [0.0, 0.0]
     campaign_result_handled = false
     projectiles.clear()
     effects.clear()
-    status_text = "Меч: SPACE / ENTER     Способность: Q / SHIFT"
+    status_text = "E / KP1 — УКЛОНЕНИЕ   •   R / KP0 — БЛОК"
     menu_panel.visible = false
     game_layer.visible = true
     _update_hud()
@@ -639,6 +667,8 @@ func _process(delta):
         attack_anim_timer[i] = maxf(0.0, attack_anim_timer[i] - delta)
         hurt_anim_timer[i] = maxf(0.0, hurt_anim_timer[i] - delta)
         combo_window[i] = maxf(0.0, combo_window[i] - delta)
+        dodge_timer[i] = maxf(0.0, dodge_timer[i] - delta)
+        dodge_cd[i] = maxf(0.0, dodge_cd[i] - delta)
     _update_dark_zones(delta)
     _update_campaign_event(delta)
 
@@ -647,6 +677,10 @@ func _process(delta):
     # With one controller, player 2 remains on the arrow-key keyboard layout.
     var p1_pad = pads[0] if pads.size() >= 1 else -1
     var p2_pad = pads[1] if pads.size() >= 2 else -1
+    block_active[0] = Input.is_key_pressed(KEY_R) or (p1_pad >= 0 and Input.is_joy_button_pressed(p1_pad, JOY_BUTTON_Y))
+    block_active[1] = Input.is_key_pressed(KEY_KP_0) or (p2_pad >= 0 and Input.is_joy_button_pressed(p2_pad, JOY_BUTTON_Y))
+    if _p1_dodge_pressed(): _dodge(0)
+    if mode == Mode.LOCAL and _p2_dodge_pressed(): _dodge(1)
 
     var m1 = _keyboard_move_1()
     if p1_pad >= 0:
@@ -730,6 +764,36 @@ func _p2_ability_pressed() -> bool:
     ability_was_down[1] = down
     return just
 
+func _p1_dodge_pressed() -> bool:
+    var pads = Input.get_connected_joypads()
+    var down := Input.is_key_pressed(KEY_E) or (pads.size() > 0 and Input.is_joy_button_pressed(pads[0], JOY_BUTTON_B))
+    var just_pressed := down and not dodge_was_down[0]
+    dodge_was_down[0] = down
+    return just_pressed
+
+func _p2_dodge_pressed() -> bool:
+    var pads = Input.get_connected_joypads()
+    var down := Input.is_key_pressed(KEY_KP_1) or (pads.size() > 1 and Input.is_joy_button_pressed(pads[1], JOY_BUTTON_B))
+    var just_pressed := down and not dodge_was_down[1]
+    dodge_was_down[1] = down
+    return just_pressed
+
+func _dodge(player: int) -> void:
+    if dodge_cd[player] > 0.0:
+        return
+    dodge_cd[player] = 1.15
+    dodge_timer[player] = 0.34
+    var direction: Vector2 = facing[player]
+    if move_blend[player] > 0.1:
+        direction = _keyboard_move_1().normalized() if player == 0 else _keyboard_move_2().normalized()
+        if direction.length() < 0.1:
+            direction = facing[player]
+    if player == 0:
+        p1 = _clamp_player(p1 + direction * 118.0)
+    else:
+        p2 = _clamp_player(p2 + direction * 118.0)
+    effects.append({"kind":"dodge_dust", "pos":p1 if player == 0 else p2, "life":0.28, "max":0.28, "color":CHAR_COLORS[char1 if player == 0 else char2]})
+
 func _clamp_player(p: Vector2) -> Vector2:
     return Vector2(clamp(p.x, 235, 1365), clamp(p.y, 270, 690))
 
@@ -753,6 +817,7 @@ func _melee(player: int):
     attack_cd[player] = [0.48, 0.32, 0.55, 0.72, 0.52][char1 if player == 0 else char2]
     attack_flash[player] = 0.22
     attack_anim_timer[player] = 0.34
+    attack_anim_duration[player] = 0.34
     if combo_window[player] > 0.0:
         combo_index[player] = (combo_index[player] + 1) % 3
     else:
@@ -780,7 +845,7 @@ func _melee(player: int):
         screen_shake = maxf(screen_shake, 0.10 + combo_index[player] * 0.045)
         effects.append({"kind":"hit","pos":target,"life":0.28,"max":0.28,"color":Color("#ffe2a0")})
         effects.append({"kind":"sparks","pos":target,"dir":dir,"life":0.32,"max":0.32,"color":Color("#ffd28a")})
-    effects.append({"kind":"slash","pos":attacker+dir*55,"dir":dir.rotated((combo_index[player] - 1) * 0.24),"life":0.24,"max":0.24,"color":CHAR_COLORS[char1 if player == 0 else char2]})
+    effects.append({"kind":"weapon_trail", "weapon":char1 if player == 0 else char2, "pos":attacker+dir*55, "dir":dir.rotated((combo_index[player] - 1) * 0.24), "life":0.28, "max":0.28, "color":CHAR_COLORS[char1 if player == 0 else char2]})
 
 func _ability(player: int):
     if ability_cd[player] > 0: return
@@ -792,6 +857,7 @@ func _ability(player: int):
     ability_cd[player] = [5.0, 4.0, 6.0, 7.0, 30.0][character]
     ability_flash[player] = 0.45
     attack_anim_timer[player] = 0.42
+    attack_anim_duration[player] = 0.42
     screen_shake = maxf(screen_shake, 0.12)
     var ability_sounds := ["knight_ability", "rogue_ability", "druid_ability", "guardian_ability", "prince_ability"]
     _play_sfx(ability_sounds[character])
@@ -800,11 +866,11 @@ func _ability(player: int):
             if player == 0: p1 = _clamp_player(p1 + dir*135)
             else: p2 = _clamp_player(p2 + dir*135)
             if (target-attacker).length() < 245: _damage(1-player, 29)
-            effects.append({"kind":"slash","pos":attacker+dir*105,"dir":dir,"life":0.45,"max":0.45,"color":Color("#f5c36d")})
+            effects.append({"kind":"weapon_trail", "weapon":character, "pos":attacker+dir*105, "dir":dir, "life":0.45, "max":0.45, "color":Color("#f5c36d")})
         1: # Rogue: quick twin dagger strike
             if (target-attacker).length() < 175: _damage(1-player, 24)
-            effects.append({"kind":"slash","pos":attacker+dir*70,"dir":dir.rotated(0.25),"life":0.35,"max":0.35,"color":Color("#80e6cb")})
-            effects.append({"kind":"slash","pos":attacker+dir*70,"dir":dir.rotated(-0.25),"life":0.35,"max":0.35,"color":Color("#80e6cb")})
+            effects.append({"kind":"weapon_trail", "weapon":character, "pos":attacker+dir*70, "dir":dir.rotated(0.25), "life":0.35, "max":0.35, "color":Color("#80e6cb")})
+            effects.append({"kind":"weapon_trail", "weapon":character, "pos":attacker+dir*70, "dir":dir.rotated(-0.25), "life":0.35, "max":0.35, "color":Color("#80e6cb")})
         2: # Druid: root zone
             if (target-attacker).length() < 260:
                 roots[1-player] = 1.45
@@ -854,6 +920,9 @@ func _update_dark_zones(delta: float):
                     break
 
 func _damage(player: int, amount: float):
+    if block_active[player]:
+        amount *= 0.42
+        effects.append({"kind":"block_sparks", "pos":p1 if player == 0 else p2, "life":0.24, "max":0.24, "color":Color("#8bd7ff")})
     if player == 0:
         hp1 = max(0.0, hp1-amount)
     else:
@@ -878,8 +947,8 @@ func _update_hud():
     portrait2.texture = CHAR_PORTRAITS[char2]
     var p1_cd := "ГОТОВО" if ability_cd[0] <= 0.0 else "%.1f СЕК" % ability_cd[0]
     var p2_cd := "ГОТОВО" if ability_cd[1] <= 0.0 else "%.1f СЕК" % ability_cd[1]
-    skill1_label.text = "SPACE / A • УДАР     Q / X • СПОСОБНОСТЬ: " + p1_cd
-    skill2_label.text = "ENTER / A • УДАР     SHIFT / X • СПОСОБНОСТЬ: " + p2_cd
+    skill1_label.text = "SPACE УДАР  •  Q СПОСОБНОСТЬ  •  E УКЛОНЕНИЕ  •  R БЛОК  |  " + p1_cd
+    skill2_label.text = "ENTER УДАР  •  SHIFT СПОСОБНОСТЬ  •  KP1 УКЛОНЕНИЕ  •  KP0 БЛОК  |  " + p2_cd
 
 func _send_remote_state():
     net_send_timer += get_process_delta_time()
@@ -937,8 +1006,8 @@ func _draw():
         _draw_prince_aura(p1)
     if char2 == 4:
         _draw_prince_aura(p2)
-    _draw_fighter(CHAR_TEXTURES[char1], p1, 0)
-    _draw_fighter(CHAR_TEXTURES[char2], p2, 1)
+    _draw_fighter(p1, 0)
+    _draw_fighter(p2, 1)
     if _is_dark_prince_empowered(0):
         draw_arc(p1, 76, 0, TAU, 48, Color("#bd91ff"), 5)
     if _is_dark_prince_empowered(1):
@@ -947,19 +1016,46 @@ func _draw():
         draw_circle(pr.pos,14,Color("#ffbd62"))
     for fx in effects:
         var ratio = fx.life/fx.max
-        if fx.kind == "slash":
-            # Directional blade trail, not a generic semicircle: three tapered strokes
-            # create a readable weapon path and point toward the hit direction.
+        if fx.kind == "weapon_trail":
             var d: Vector2 = fx.dir.normalized()
-            var c: Color = fx.color
-            var center: Vector2 = fx.pos
             var side: Vector2 = d.orthogonal()
-            var travel: float = 92.0 * (1.0 - ratio * 0.18)
-            var tail: Vector2 = center - d * 30.0
-            var tip: Vector2 = center + d * travel
-            draw_line(tail + side * 25.0, tip, Color(c.r, c.g, c.b, ratio * 0.42), 15.0 * ratio + 1.0, true)
-            draw_line(tail + side * 13.0, tip - side * 5.0, Color(c.r, c.g, c.b, ratio), 7.0 * ratio + 1.0, true)
-            draw_line(tail + side * 8.0, tip - side * 9.0, Color(1.0, 0.94, 0.78, ratio), 2.5 * ratio + 0.5, true)
+            var c: Color = fx.color
+            var weapon_id: int = int(fx.get("weapon", 0))
+            var fade: float = ratio
+            var length: float = [108.0, 72.0, 96.0, 88.0, 122.0][weapon_id]
+            var start: Vector2 = fx.pos - d * 24.0
+            var finish: Vector2 = fx.pos + d * length * (1.0 - ratio * 0.12)
+            match weapon_id:
+                0: # Knight — one clean steel sword stroke
+                    draw_line(start + side * 15.0, finish, Color(0.40, 0.72, 1.0, fade * 0.38), 13.0 * fade + 1.0, true)
+                    draw_line(start + side * 7.0, finish, Color(0.88, 0.95, 1.0, fade), 5.0 * fade + 1.0, true)
+                    draw_line(start + side * 3.0, finish, Color(1.0, 1.0, 1.0, fade), 1.8, true)
+                1: # Rogue — two short crossing dagger cuts
+                    draw_line(start + side * 18.0, finish - side * 12.0, Color(0.95, 0.34, 0.30, fade), 5.0 * fade + 1.0, true)
+                    draw_line(start - side * 18.0, finish + side * 12.0, Color(1.0, 0.76, 0.60, fade), 4.0 * fade + 1.0, true)
+                2: # Druid — leaf-shaped motes along the staff sweep
+                    draw_line(start, finish, Color(0.45, 0.78, 0.30, fade * 0.5), 4.0 * fade + 1.0, true)
+                    for leaf in range(5):
+                        var leaf_pos: Vector2 = start.lerp(finish, float(leaf + 1) / 6.0) + side * sin(float(leaf) * 2.1) * 16.0
+                        draw_colored_polygon(PackedVector2Array([leaf_pos, leaf_pos + d * 10.0 + side * 4.0, leaf_pos + d * 19.0, leaf_pos - side * 4.0]), Color(0.64, 0.90, 0.36, fade))
+                3: # Guardian — heavy hammer impact line and ground sparks
+                    draw_line(start, finish, Color(0.55, 0.78, 1.0, fade * 0.65), 10.0 * fade + 1.0, true)
+                    for spark in range(5):
+                        var spark_pos: Vector2 = finish + side * (float(spark) - 2.0) * 10.0
+                        draw_line(spark_pos, spark_pos + Vector2(0.0, 15.0 + float(spark % 2) * 9.0), Color(1.0, 0.78, 0.38, fade), 3.0, true)
+                4: # Dark Prince — jagged void blade with violet core
+                    draw_line(start + side * 18.0, finish, Color(0.38, 0.10, 0.68, fade * 0.6), 16.0 * fade + 1.0, true)
+                    draw_line(start + side * 7.0, finish - side * 5.0, Color(0.78, 0.48, 1.0, fade), 6.0 * fade + 1.0, true)
+                    draw_line(start, finish, Color(0.12, 0.04, 0.22, fade), 2.0, true)
+        elif fx.kind == "block_sparks":
+            for spark in range(7):
+                var a: float = TAU * float(spark) / 7.0
+                var ray: Vector2 = Vector2(cos(a), sin(a))
+                draw_line(fx.pos + ray * 16.0, fx.pos + ray * (28.0 + 22.0 * (1.0 - ratio)), Color(0.55, 0.82, 1.0, ratio), 3.0, true)
+        elif fx.kind == "dodge_dust":
+            for puff in range(5):
+                var puff_pos: Vector2 = fx.pos + Vector2(-28.0 + puff * 14.0, 28.0 + sin(float(puff)) * 7.0)
+                draw_circle(puff_pos, (8.0 + puff * 1.5) * ratio, Color(0.62, 0.57, 0.50, ratio * 0.36))
         elif fx.kind == "hit":
             var burst_radius: float = 12.0 + 24.0 * (1.0 - ratio)
             for ray in range(8):
@@ -996,32 +1092,86 @@ func _draw():
             draw_string(ThemeDB.fallback_font, combo_pos + Vector2(-28, -176), "КОМБО  x%d" % (combo_index[fighter] + 1), HORIZONTAL_ALIGNMENT_CENTER, 140, 15, Color("#ffd58e"))
 
 
-func _draw_fighter(texture: Texture2D, center: Vector2, player: int) -> void:
-    # The artwork is animated in real time: idle breathing, footstep bob,
-    # directional lean, a committed attack lunge, recoil and hit flash.
+func _draw_fighter(center: Vector2, player: int) -> void:
     var character: int = char1 if player == 0 else char2
-    var bob: float = sin(fighter_anim_time[player] * (7.5 if move_blend[player] > 0.1 else 2.4)) * (5.0 if move_blend[player] > 0.1 else 2.2)
-    var attack_ratio: float = clampf(attack_anim_timer[player] / 0.34, 0.0, 1.0)
-    var attack_ease: float = sin((1.0 - attack_ratio) * PI)
+    var moving: bool = move_blend[player] > 0.12
+    var row: int = 0
+    var frame: int = 0
+    if dodge_timer[player] > 0.0:
+        row = 4
+        frame = clampi(int((0.34 - dodge_timer[player]) / 0.34 * 4.0), 0, 3)
+    elif block_active[player]:
+        row = 5
+        frame = int(fighter_anim_time[player] * 8.0) % 4
+    elif attack_anim_timer[player] > 0.0:
+        row = 2
+        frame = clampi(int((1.0 - attack_anim_timer[player] / maxf(0.01, attack_anim_duration[player])) * 4.0), 0, 3)
+    elif hurt_anim_timer[player] > 0.0:
+        row = 3
+        frame = clampi(int((1.0 - hurt_anim_timer[player] / 0.24) * 4.0), 0, 3)
+    elif moving:
+        row = 1
+        frame = int(fighter_anim_time[player] * (14.0 if move_blend[player] > 0.82 else 9.0)) % 4
+    else:
+        row = 0
+        frame = int(fighter_anim_time[player] * 2.2) % 4
+
+    var bob: float = sin(fighter_anim_time[player] * (8.0 if moving else 2.2)) * (2.8 if moving else 1.3)
+    if dodge_timer[player] > 0.0:
+        bob += 4.0
     var hurt_ratio: float = clampf(hurt_anim_timer[player] / 0.24, 0.0, 1.0)
-    var facing_angle: float = facing[player].angle()
     var side_sign: float = -1.0 if facing[player].x < 0.0 else 1.0
-    var lean: float = clampf(facing_angle * 0.12, -0.18, 0.18) * move_blend[player]
-    var rotation: float = lean + side_sign * attack_ease * 0.10 - side_sign * hurt_ratio * 0.07
-    var scale_x: float = 1.0 + move_blend[player] * 0.025 - attack_ease * 0.035
-    var scale_y: float = 1.0 - move_blend[player] * 0.018 + attack_ease * 0.045
-    var lunge: Vector2 = facing[player] * attack_ease * (16.0 if character == 1 else 10.0)
-    var draw_center: Vector2 = center + draw_offset + Vector2(0.0, bob) + lunge + Vector2(-side_sign * hurt_ratio * 7.0, 0.0)
-    var target_height: float = 286.0 if character == 3 else 276.0
-    var aspect: float = float(texture.get_width()) / maxf(1.0, float(texture.get_height()))
-    var target_width: float = target_height * aspect
+    var lean: float = clampf(facing[player].angle() * 0.08, -0.12, 0.12) * move_blend[player]
+    var attack_ratio: float = clampf(attack_anim_timer[player] / maxf(0.01, attack_anim_duration[player]), 0.0, 1.0)
+    var attack_ease: float = sin((1.0 - attack_ratio) * PI)
+    var lunge: Vector2 = facing[player] * attack_ease * (20.0 if character == 1 else 13.0)
+    var draw_center: Vector2 = center + draw_offset + Vector2(0.0, bob) + lunge + Vector2(-side_sign * hurt_ratio * 8.0, 0.0)
+    var target_height: float = 320.0 if character == 3 else 310.0
+    var target_width: float = target_height * (256.0 / 384.0)
     var flip: float = -1.0 if facing[player].x < 0.0 else 1.0
-    draw_set_transform(draw_center, rotation, Vector2(scale_x * flip, scale_y))
-    var tint := Color(1.0, 0.72, 0.72, 1.0) if hurt_ratio > 0.0 else Color.WHITE
-    draw_texture_rect(texture, Rect2(-target_width * 0.5, -target_height * 0.5 - 3.0, target_width, target_height), false, tint)
+    var pose_rotation: float = lean - side_sign * attack_ease * 0.035 - side_sign * hurt_ratio * 0.08
+    draw_set_transform(draw_center, pose_rotation, Vector2(flip, 1.0))
+    var tint: Color = Color(1.0, 0.78, 0.78, 1.0) if hurt_ratio > 0.0 else Color.WHITE
+    var atlas_region := Rect2(frame * 256, row * 384, 256, 384)
+    draw_texture_rect_region(CHAR_ANIM_SHEETS[character], Rect2(-target_width * 0.5, -target_height * 0.5, target_width, target_height), atlas_region, false, tint)
     draw_set_transform(draw_offset, 0.0, Vector2.ONE)
+    _draw_character_weapon(character, draw_center, player, attack_ease)
     if hurt_ratio > 0.0:
-        draw_circle(draw_center - draw_offset + Vector2(0.0, -target_height * 0.36), 5.0 + hurt_ratio * 4.0, Color(1.0, 0.35, 0.25, hurt_ratio * 0.55))
+        draw_circle(draw_center + Vector2(0.0, -target_height * 0.36), 5.0 + hurt_ratio * 4.0, Color(1.0, 0.35, 0.25, hurt_ratio * 0.55))
+    if block_active[player]:
+        draw_arc(draw_center + Vector2(0.0, -20.0), 76.0, -1.15, 1.15, 24, Color(0.35, 0.72, 1.0, 0.78), 4.0, true)
+
+func _draw_character_weapon(character: int, body_center: Vector2, player: int, attack_ease: float) -> void:
+    var facing_angle: float = facing[player].angle()
+    var swing: float = sin(attack_ease * PI)
+    var base_rotation: float = facing_angle + PI * 0.5
+    var hand: Vector2 = body_center + Vector2((1.0 if facing[player].x >= 0.0 else -1.0) * 32.0, -34.0)
+    var weapon_rotation: float = base_rotation
+    if attack_anim_timer[player] > 0.0:
+        weapon_rotation += [-1.05, 1.15, -0.65, 1.3, 1.45][character] * swing
+    elif move_blend[player] > 0.1:
+        weapon_rotation += sin(fighter_anim_time[player] * 9.0) * 0.09
+    match character:
+        0: # Knight — longsword
+            draw_set_transform(hand, weapon_rotation, Vector2(0.58, 0.58))
+            draw_texture_rect(WEAPON_TEXTURES[0], Rect2(-64.0, -154.0, 128.0, 154.0), false)
+        1: # Rogue — twin daggers, independently angled
+            draw_set_transform(hand + Vector2(-18.0, 2.0), weapon_rotation - 0.34 - swing * 0.45, Vector2(0.32, 0.32))
+            draw_texture_rect(WEAPON_TEXTURES[1], Rect2(-64.0, -154.0, 128.0, 154.0), false)
+            draw_set_transform(hand + Vector2(19.0, 0.0), weapon_rotation + 0.34 + swing * 0.45, Vector2(0.32, 0.32))
+            draw_texture_rect(WEAPON_TEXTURES[1], Rect2(-64.0, -154.0, 128.0, 154.0), false)
+        2: # Druid — rune staff
+            draw_set_transform(hand + Vector2(5.0, -10.0), weapon_rotation + sin(fighter_anim_time[player] * 2.0) * 0.04, Vector2(0.48, 0.48))
+            draw_texture_rect(WEAPON_TEXTURES[2], Rect2(-64.0, -210.0, 128.0, 210.0), false)
+        3: # Guardian — war hammer and shield
+            draw_set_transform(hand, weapon_rotation + swing * 0.65, Vector2(0.53, 0.53))
+            draw_texture_rect(WEAPON_TEXTURES[3], Rect2(-64.0, -170.0, 128.0, 170.0), false)
+            draw_set_transform(body_center + Vector2(-42.0 if facing[player].x > 0.0 else 42.0, -18.0), facing_angle + PI * 0.5, Vector2(0.42, 0.42))
+            draw_texture_rect(GUARDIAN_SHIELD, Rect2(-64.0, -110.0, 128.0, 110.0), false)
+        4: # Dark Prince — void greatblade
+            draw_set_transform(hand, weapon_rotation + swing * 1.2, Vector2(0.60, 0.60))
+            draw_texture_rect(WEAPON_TEXTURES[4], Rect2(-64.0, -176.0, 128.0, 176.0), false)
+    draw_set_transform(draw_offset, 0.0, Vector2.ONE)
 
 
 func _update_campaign_event(delta: float) -> void:
