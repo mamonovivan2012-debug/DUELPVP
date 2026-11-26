@@ -767,14 +767,14 @@ func _p2_ability_pressed() -> bool:
 func _p1_dodge_pressed() -> bool:
     var pads = Input.get_connected_joypads()
     var down := Input.is_key_pressed(KEY_E) or (pads.size() > 0 and Input.is_joy_button_pressed(pads[0], JOY_BUTTON_B))
-    var just_pressed := down and not dodge_was_down[0]
+    var just_pressed: bool = down and not dodge_was_down[0]
     dodge_was_down[0] = down
     return just_pressed
 
 func _p2_dodge_pressed() -> bool:
     var pads = Input.get_connected_joypads()
     var down := Input.is_key_pressed(KEY_KP_1) or (pads.size() > 1 and Input.is_joy_button_pressed(pads[1], JOY_BUTTON_B))
-    var just_pressed := down and not dodge_was_down[1]
+    var just_pressed: bool = down and not dodge_was_down[1]
     dodge_was_down[1] = down
     return just_pressed
 
@@ -1133,7 +1133,7 @@ func _draw_fighter(center: Vector2, player: int) -> void:
     draw_set_transform(draw_center, pose_rotation, Vector2(flip, 1.0))
     var tint: Color = Color(1.0, 0.78, 0.78, 1.0) if hurt_ratio > 0.0 else Color.WHITE
     var atlas_region := Rect2(frame * 256, row * 384, 256, 384)
-    draw_texture_rect_region(CHAR_ANIM_SHEETS[character], Rect2(-target_width * 0.5, -target_height * 0.5, target_width, target_height), atlas_region, false, tint)
+    draw_texture_rect_region(CHAR_ANIM_SHEETS[character], Rect2(-target_width * 0.5, -target_height * 0.5, target_width, target_height), atlas_region, tint, false)
     draw_set_transform(draw_offset, 0.0, Vector2.ONE)
     _draw_character_weapon(character, draw_center, player, attack_ease)
     if hurt_ratio > 0.0:
