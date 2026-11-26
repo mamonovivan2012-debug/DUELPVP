@@ -73,6 +73,17 @@ var campaign_event_pos := Vector2(800, 470)
 var campaign_event_flash := 0.0
 var visual_time := 0.0
 var ember_particles: Array[Dictionary] = []
+# Combat presentation: procedural pose animation layered over the illustrated fighters.
+var fighter_anim_time := [0.0, 0.0]
+var attack_anim_timer := [0.0, 0.0]
+var hurt_anim_timer := [0.0, 0.0]
+var move_blend := [0.0, 0.0]
+var combo_index := [0, 0]
+var combo_window := [0.0, 0.0]
+var screen_shake := 0.0
+var screen_shake_seed := 0.0
+var draw_offset := Vector2.ZERO
+var hit_stop := 0.0
 const AUDIO_FILES := {
     "menu": "res://assets/audio/menu_theme.wav",
     "battle": "res://assets/audio/battle_theme.wav",
@@ -150,91 +161,187 @@ func _build_ui():
     menu_layer = CanvasLayer.new()
     menu_layer.layer = 3
     add_child(menu_layer)
+
+    # Full-screen transparent root: the fortress artwork is drawn behind this UI.
     menu_panel = PanelContainer.new()
-    menu_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-    menu_panel.custom_minimum_size = Vector2(520, 670)
-    var menu_style := StyleBoxFlat.new()
-    menu_style.bg_color = Color(0.035, 0.045, 0.065, 0.94)
-    menu_style.border_color = Color("#b58b50")
-    menu_style.set_border_width_all(2)
-    menu_style.set_corner_radius_all(12)
-    menu_style.content_margin_left = 28
-    menu_style.content_margin_right = 28
-    menu_style.content_margin_top = 24
-    menu_style.content_margin_bottom = 24
-    menu_panel.add_theme_stylebox_override("panel", menu_style)
+    menu_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    menu_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
     menu_layer.add_child(menu_panel)
     menu_panel.modulate.a = 0.0
     var menu_intro := create_tween()
-    menu_intro.tween_property(menu_panel, "modulate:a", 1.0, 0.7)
-    var menu_scroll := ScrollContainer.new()
-    menu_scroll.custom_minimum_size = Vector2(450, 610)
-    menu_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-    menu_panel.add_child(menu_scroll)
-    var vb = VBoxContainer.new()
-    vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    vb.add_theme_constant_override("separation", 9)
-    menu_scroll.add_child(vb)
-    var title = Label.new()
+    menu_intro.set_parallel(true)
+    menu_intro.tween_property(menu_panel, "modulate:a", 1.0, 0.85)
+
+    var canvas := Control.new()
+    canvas.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    menu_panel.add_child(canvas)
+
+    # Left title block and one clean hero silhouette keep the composition focused.
+    var title := Label.new()
     title.text = "ARENA DUEL"
-    title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    title.add_theme_font_size_override("font_size", 52)
-    title.add_theme_color_override("font_color", Color("#f1d5a5"))
-    title.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.9))
+    title.position = Vector2(92, 76)
+    title.size = Vector2(700, 88)
+    title.add_theme_font_size_override("font_size", 68)
+    title.add_theme_color_override("font_color", Color("#f3dfbd"))
+    title.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.95))
     title.add_theme_constant_override("shadow_offset_x", 3)
-    title.add_theme_constant_override("shadow_offset_y", 4)
-    vb.add_child(title)
-    var sub = Label.new()
-    sub.text = "МЕЧИ • МАГИЯ • АРЕНА"
-    sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    sub.add_theme_color_override("font_color", Color("#d6c4a4"))
-    vb.add_child(sub)
+    title.add_theme_constant_override("shadow_offset_y", 5)
+    canvas.add_child(title)
 
-    var pick1 = Label.new()
-    pick1.text = "Персонаж игрока 1"
-    vb.add_child(pick1)
+    var subtitle := Label.new()
+    subtitle.text = "СТАЛЬ  •  МАГИЯ  •  ЧЕСТЬ"
+    subtitle.position = Vector2(100, 165)
+    subtitle.size = Vector2(600, 32)
+    subtitle.add_theme_font_size_override("font_size", 19)
+    subtitle.add_theme_color_override("font_color", Color("#d8bd91"))
+    canvas.add_child(subtitle)
+
+    var hero_art := TextureRect.new()
+    hero_art.texture = CHAR_TEXTURES[0]
+    hero_art.position = Vector2(355, 205)
+    hero_art.size = Vector2(430, 485)
+    hero_art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    hero_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+    hero_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    hero_art.modulate = Color(1.0, 1.0, 1.0, 0.96)
+    canvas.add_child(hero_art)
+
+    var hero_caption := Label.new()
+    hero_caption.text = "ПЯТЬ ГЕРОЕВ. ОДНА АРЕНА."
+    hero_caption.position = Vector2(120, 520)
+    hero_caption.size = Vector2(520, 34)
+    hero_caption.add_theme_font_size_override("font_size", 18)
+    hero_caption.add_theme_color_override("font_color", Color("#e9d4b0"))
+    canvas.add_child(hero_caption)
+
+    # Character setup card at the lower left.
+    var select_card := PanelContainer.new()
+    select_card.position = Vector2(86, 610)
+    select_card.size = Vector2(800, 205)
+    select_card.add_theme_stylebox_override("panel", _make_menu_card_style(Color(0.025, 0.032, 0.048, 0.91)))
+    canvas.add_child(select_card)
+    var select_content := VBoxContainer.new()
+    select_content.add_theme_constant_override("separation", 10)
+    select_card.add_child(select_content)
+    var select_title := Label.new()
+    select_title.text = "ВЫБОР ГЕРОЕВ"
+    select_title.add_theme_font_size_override("font_size", 17)
+    select_title.add_theme_color_override("font_color", Color("#e4c18b"))
+    select_content.add_child(select_title)
+    var picks_row := HBoxContainer.new()
+    picks_row.add_theme_constant_override("separation", 18)
+    select_content.add_child(picks_row)
+
+    var p1_box := VBoxContainer.new()
+    p1_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    picks_row.add_child(p1_box)
+    var p1_label := Label.new()
+    p1_label.text = "ИГРОК 1"
+    p1_label.add_theme_font_size_override("font_size", 12)
+    p1_label.add_theme_color_override("font_color", Color("#b9b1a5"))
+    p1_box.add_child(p1_label)
     char1_option = OptionButton.new()
-    for i in range(CHAR_NAMES.size()): char1_option.add_item(CHAR_NAMES[i], i)
+    for i in range(CHAR_NAMES.size()):
+        char1_option.add_item(CHAR_NAMES[i], i)
     char1_option.select(0)
-    vb.add_child(char1_option)
+    char1_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    _style_menu_option(char1_option)
+    p1_box.add_child(char1_option)
 
-    var pick2 = Label.new()
-    pick2.text = "Персонаж игрока 2 / бота"
-    vb.add_child(pick2)
+    var p2_box := VBoxContainer.new()
+    p2_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    picks_row.add_child(p2_box)
+    var p2_label := Label.new()
+    p2_label.text = "ИГРОК 2 / БОТ"
+    p2_label.add_theme_font_size_override("font_size", 12)
+    p2_label.add_theme_color_override("font_color", Color("#b9b1a5"))
+    p2_box.add_child(p2_label)
     char2_option = OptionButton.new()
-    for i in range(CHAR_NAMES.size()): char2_option.add_item(CHAR_NAMES[i], i)
+    for i in range(CHAR_NAMES.size()):
+        char2_option.add_item(CHAR_NAMES[i], i)
     char2_option.select(1)
-    vb.add_child(char2_option)
+    char2_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    _style_menu_option(char2_option)
+    p2_box.add_child(char2_option)
 
-    _add_button(vb, "CAMPAIGN • СЮЖЕТНАЯ КАМПАНИЯ", _start_campaign)
-    _add_button(vb, "PLAY • ЛОКАЛЬНАЯ АРЕНА", _start_local)
-    _add_button(vb, "PvB • ПРОТИВ БОТА", _start_bot)
-    _add_button(vb, "PvP • СОЗДАТЬ ОНЛАЙН-КОМНАТУ", _host_online)
-    ip_input = LineEdit.new()
-    ip_input.placeholder_text = "IP компьютера-хоста"
-    ip_input.text = "127.0.0.1"
-    vb.add_child(ip_input)
-    _add_button(vb, "PvP • ПОДКЛЮЧИТЬСЯ", _join_online)
-
-    var optrow = HBoxContainer.new()
-    var optlabel = Label.new()
-    optlabel.text = "Сложность бота:"
-    optrow.add_child(optlabel)
+    var bot_box := VBoxContainer.new()
+    bot_box.custom_minimum_size = Vector2(150, 0)
+    picks_row.add_child(bot_box)
+    var bot_label := Label.new()
+    bot_label.text = "СЛОЖНОСТЬ БОТА"
+    bot_label.add_theme_font_size_override("font_size", 12)
+    bot_label.add_theme_color_override("font_color", Color("#b9b1a5"))
+    bot_box.add_child(bot_label)
     bot_option = OptionButton.new()
-    bot_option.add_item("Лёгкая",0)
-    bot_option.add_item("Средняя",1)
-    bot_option.add_item("Сложная",2)
+    bot_option.add_item("Лёгкая", 0)
+    bot_option.add_item("Средняя", 1)
+    bot_option.add_item("Сложная", 2)
     bot_option.select(1)
-    optrow.add_child(bot_option)
-    vb.add_child(optrow)
+    _style_menu_option(bot_option)
+    bot_box.add_child(bot_option)
+
+    # Main navigation card. All actions from the original menu are retained.
+    var nav_card := PanelContainer.new()
+    nav_card.position = Vector2(1010, 78)
+    nav_card.size = Vector2(500, 744)
+    nav_card.add_theme_stylebox_override("panel", _make_menu_card_style(Color(0.018, 0.023, 0.038, 0.94)))
+    canvas.add_child(nav_card)
+    var nav := VBoxContainer.new()
+    nav.add_theme_constant_override("separation", 11)
+    nav_card.add_child(nav)
+
+    var nav_heading := Label.new()
+    nav_heading.text = "ГЛАВНОЕ МЕНЮ"
+    nav_heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    nav_heading.add_theme_font_size_override("font_size", 25)
+    nav_heading.add_theme_color_override("font_color", Color("#f0d6aa"))
+    nav.add_child(nav_heading)
+    var nav_subtitle := Label.new()
+    nav_subtitle.text = "ВЫБЕРИ СВОЙ ПУТЬ"
+    nav_subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    nav_subtitle.add_theme_font_size_override("font_size", 11)
+    nav_subtitle.add_theme_color_override("font_color", Color("#9d8a70"))
+    nav.add_child(nav_subtitle)
+    var separator := HSeparator.new()
+    separator.add_theme_color_override("font_color", Color("#755b3e"))
+    nav.add_child(separator)
+
+    _add_button(nav, "PLAY     ·     ЛОКАЛЬНАЯ АРЕНА", _start_local, true)
+    _add_button(nav, "CAMPAIGN     ·     КАМПАНИЯ", _start_campaign)
+    _add_button(nav, "PvB     ·     ПРОТИВ БОТА", _start_bot)
+    _add_button(nav, "PvP     ·     СОЗДАТЬ КОМНАТУ", _host_online)
+
+    var online_label := Label.new()
+    online_label.text = "ПОДКЛЮЧЕНИЕ К ИГРОКУ"
+    online_label.add_theme_font_size_override("font_size", 11)
+    online_label.add_theme_color_override("font_color", Color("#b7a58b"))
+    nav.add_child(online_label)
+    ip_input = LineEdit.new()
+    ip_input.placeholder_text = "IP-адрес хоста"
+    ip_input.text = "127.0.0.1"
+    ip_input.custom_minimum_size = Vector2(0, 42)
+    ip_input.add_theme_stylebox_override("normal", _make_menu_card_style(Color("#111722")))
+    ip_input.add_theme_color_override("font_color", Color("#f0e5d2"))
+    ip_input.add_theme_color_override("font_placeholder_color", Color("#8b8277"))
+    nav.add_child(ip_input)
+    _add_button(nav, "PvP     ·     ПОДКЛЮЧИТЬСЯ", _join_online)
+
+    var spacer_menu := Control.new()
+    spacer_menu.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    nav.add_child(spacer_menu)
+    _add_button(nav, "SETTINGS     ·     НАСТРОЙКИ", _open_settings)
+    _add_button(nav, "EXIT     ·     ВЫХОД", func(): get_tree().quit())
+
     status_label = Label.new()
-    status_label.text = "P1: WASD / геймпад • A/Space атака • X/Q способность\nP2: стрелки / второй геймпад • Enter атака • Shift способность"
-    status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    status_label.text = "P1: WASD / геймпад  ·  SPACE атака  ·  Q способность\nP2: стрелки / второй геймпад  ·  ENTER атака  ·  SHIFT способность"
+    status_label.position = Vector2(95, 835)
+    status_label.size = Vector2(1390, 48)
     status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    status_label.add_theme_color_override("font_color", Color("#e7c98f"))
-    vb.add_child(status_label)
-    _add_button(vb, "SETTINGS • НАСТРОЙКИ ЗВУКА", _open_settings)
-    _add_button(vb, "EXIT • ВЫХОД", func(): get_tree().quit())
+    status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    status_label.add_theme_font_size_override("font_size", 12)
+    status_label.add_theme_color_override("font_color", Color("#c6b69e"))
+    canvas.add_child(status_label)
+
     _load_campaign_progress()
     _build_settings_dialog()
     _build_campaign_dialog()
@@ -347,28 +454,49 @@ func _build_ui():
     back.pressed.connect(_back_menu)
     game_layer.add_child(back)
 
-func _add_button(parent: VBoxContainer, caption: String, action: Callable):
-    var b = Button.new()
+func _make_menu_card_style(fill: Color) -> StyleBoxFlat:
+    var style := StyleBoxFlat.new()
+    style.bg_color = fill
+    style.border_color = Color("#80613d")
+    style.set_border_width_all(1)
+    style.set_corner_radius_all(5)
+    style.content_margin_left = 20
+    style.content_margin_right = 20
+    style.content_margin_top = 16
+    style.content_margin_bottom = 16
+    return style
+
+func _style_menu_option(option: OptionButton) -> void:
+    option.custom_minimum_size = Vector2(0, 42)
+    option.add_theme_stylebox_override("normal", _make_menu_card_style(Color("#151c28")))
+    option.add_theme_stylebox_override("hover", _make_menu_card_style(Color("#202b3a")))
+    option.add_theme_color_override("font_color", Color("#eee0c8"))
+    option.add_theme_font_size_override("font_size", 15)
+
+func _add_button(parent: VBoxContainer, caption: String, action: Callable, primary: bool = false):
+    var b := Button.new()
     b.text = caption
-    b.custom_minimum_size = Vector2(0, 42)
-    b.add_theme_font_size_override("font_size", 17)
+    b.custom_minimum_size = Vector2(0, 54 if primary else 48)
+    b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    b.add_theme_font_size_override("font_size", 16 if primary else 14)
     var normal := StyleBoxFlat.new()
-    normal.bg_color = Color("#202b3a")
-    normal.border_color = Color("#8f7147")
-    normal.set_border_width_all(1)
-    normal.set_corner_radius_all(6)
-    normal.content_margin_left = 12
-    normal.content_margin_right = 12
+    normal.bg_color = Color("#51391f") if primary else Color("#182231")
+    normal.border_color = Color("#d0a45e") if primary else Color("#766044")
+    normal.set_border_width_all(1 if not primary else 2)
+    normal.set_corner_radius_all(4)
+    normal.content_margin_left = 16
+    normal.content_margin_right = 16
     var hover := normal.duplicate() as StyleBoxFlat
-    hover.bg_color = Color("#35475b")
-    hover.border_color = Color("#e0b96f")
+    hover.bg_color = Color("#765329") if primary else Color("#29394d")
+    hover.border_color = Color("#f0ca83")
     var pressed := normal.duplicate() as StyleBoxFlat
-    pressed.bg_color = Color("#111a27")
+    pressed.bg_color = Color("#2a2119")
     b.add_theme_stylebox_override("normal", normal)
     b.add_theme_stylebox_override("hover", hover)
     b.add_theme_stylebox_override("pressed", pressed)
-    b.add_theme_color_override("font_color", Color("#f1dfc1"))
-    b.add_theme_color_override("font_hover_color", Color("#fff3d4"))
+    b.add_theme_stylebox_override("focus", hover)
+    b.add_theme_color_override("font_color", Color("#f5e5ca"))
+    b.add_theme_color_override("font_hover_color", Color("#fff4df"))
     b.add_theme_color_override("font_pressed_color", Color("#d8b978"))
     b.pressed.connect(_play_button_and_action.bind(action))
     parent.add_child(b)
@@ -496,12 +624,21 @@ func _process(delta):
         return
 
     round_time = max(0.0, round_time - delta)
+    var combat_delta: float = delta
+    if hit_stop > 0.0:
+        hit_stop = maxf(0.0, hit_stop - delta)
+        combat_delta = delta * 0.22
+    screen_shake = maxf(0.0, screen_shake - delta * 2.8)
     for i in range(2):
-        attack_cd[i] = max(0.0, attack_cd[i] - delta)
-        ability_cd[i] = max(0.0, ability_cd[i] - delta)
+        attack_cd[i] = max(0.0, attack_cd[i] - combat_delta)
+        ability_cd[i] = max(0.0, ability_cd[i] - combat_delta)
         attack_flash[i] = max(0.0, attack_flash[i] - delta)
         ability_flash[i] = max(0.0, ability_flash[i] - delta)
-        roots[i] = max(0.0, roots[i] - delta)
+        roots[i] = max(0.0, roots[i] - combat_delta)
+        fighter_anim_time[i] += delta
+        attack_anim_timer[i] = maxf(0.0, attack_anim_timer[i] - delta)
+        hurt_anim_timer[i] = maxf(0.0, hurt_anim_timer[i] - delta)
+        combo_window[i] = maxf(0.0, combo_window[i] - delta)
     _update_dark_zones(delta)
     _update_campaign_event(delta)
 
@@ -516,8 +653,9 @@ func _process(delta):
         var stick1 = _joy_move(p1_pad)
         if stick1.length() > 0.1:
             m1 = stick1
-    if m1.length() > 0.1:
-        p1 += m1.limit_length(1.0) * _speed(char1) * (1.3 if _is_dark_prince_empowered(0) else 1.0) * delta
+    move_blend[0] = clampf(m1.length(), 0.0, 1.0)
+    if roots[0] <= 0.0 and m1.length() > 0.1:
+        p1 += m1.limit_length(1.0) * _speed(char1) * (1.3 if _is_dark_prince_empowered(0) else 1.0) * combat_delta
         facing[0] = m1.normalized()
     p1 = _clamp_player(p1)
 
@@ -527,13 +665,14 @@ func _process(delta):
             var stick2 = _joy_move(p2_pad)
             if stick2.length() > 0.1:
                 m2 = stick2
+        move_blend[1] = clampf(m2.length(), 0.0, 1.0)
         if roots[1] <= 0 and m2.length() > 0.1:
-            p2 += m2.limit_length(1.0) * _speed(char2) * (1.3 if _is_dark_prince_empowered(1) else 1.0) * delta
+            p2 += m2.limit_length(1.0) * _speed(char2) * (1.3 if _is_dark_prince_empowered(1) else 1.0) * combat_delta
             facing[1] = m2.normalized()
         if _p2_attack_pressed(): _melee(1)
         if _p2_ability_pressed(): _ability(1)
     elif mode == Mode.BOT:
-        _bot_update(delta)
+        _bot_update(combat_delta)
     elif mode == Mode.ONLINE:
         if not multiplayer.is_server(): _send_remote_state()
 
@@ -599,6 +738,7 @@ func _speed(character: int) -> float:
 
 func _bot_update(delta):
     var dir = p1 - p2
+    move_blend[1] = 1.0 if dir.length() > 105.0 else 0.0
     if dir.length() > 105:
         p2 += dir.normalized() * (150 + bot_level * 48) * delta
         facing[1] = dir.normalized()
@@ -612,6 +752,12 @@ func _melee(player: int):
     if attack_cd[player] > 0: return
     attack_cd[player] = [0.48, 0.32, 0.55, 0.72, 0.52][char1 if player == 0 else char2]
     attack_flash[player] = 0.22
+    attack_anim_timer[player] = 0.34
+    if combo_window[player] > 0.0:
+        combo_index[player] = (combo_index[player] + 1) % 3
+    else:
+        combo_index[player] = 0
+    combo_window[player] = 0.78
     _play_sfx("sword")
     var attacker = p1 if player == 0 else p2
     var target = p2 if player == 0 else p1
@@ -619,13 +765,22 @@ func _melee(player: int):
     facing[player] = dir
     var reach = [112.0, 88.0, 105.0, 125.0, 118.0][char1 if player == 0 else char2]
     var damage = [16.0, 12.0, 11.0, 23.0, 17.0][char1 if player == 0 else char2]
+    damage *= [1.0, 1.12, 1.28][combo_index[player]]
     if _is_dark_prince_empowered(player): damage *= 1.3
     var delta_pos = target - attacker
     if delta_pos.length() <= reach and facing[player].dot(delta_pos.normalized()) > 0.35:
         _damage(1-player, damage)
         _play_sfx("hit")
-        effects.append({"kind":"hit","pos":target,"life":0.25,"max":0.25,"color":Color("#ffe2a0")})
-    effects.append({"kind":"slash","pos":attacker+dir*50,"dir":dir,"life":0.22,"max":0.22,"color":CHAR_COLORS[char1 if player == 0 else char2]})
+        var knock_dir: Vector2 = dir
+        if 1 - player == 0:
+            p1 = _clamp_player(p1 + knock_dir * (24.0 + combo_index[player] * 13.0))
+        else:
+            p2 = _clamp_player(p2 + knock_dir * (24.0 + combo_index[player] * 13.0))
+        hit_stop = maxf(hit_stop, 0.045 if combo_index[player] < 2 else 0.075)
+        screen_shake = maxf(screen_shake, 0.10 + combo_index[player] * 0.045)
+        effects.append({"kind":"hit","pos":target,"life":0.28,"max":0.28,"color":Color("#ffe2a0")})
+        effects.append({"kind":"sparks","pos":target,"dir":dir,"life":0.32,"max":0.32,"color":Color("#ffd28a")})
+    effects.append({"kind":"slash","pos":attacker+dir*55,"dir":dir.rotated((combo_index[player] - 1) * 0.24),"life":0.24,"max":0.24,"color":CHAR_COLORS[char1 if player == 0 else char2]})
 
 func _ability(player: int):
     if ability_cd[player] > 0: return
@@ -636,6 +791,8 @@ func _ability(player: int):
     facing[player] = dir
     ability_cd[player] = [5.0, 4.0, 6.0, 7.0, 30.0][character]
     ability_flash[player] = 0.45
+    attack_anim_timer[player] = 0.42
+    screen_shake = maxf(screen_shake, 0.12)
     var ability_sounds := ["knight_ability", "rogue_ability", "druid_ability", "guardian_ability", "prince_ability"]
     _play_sfx(ability_sounds[character])
     match character:
@@ -697,8 +854,12 @@ func _update_dark_zones(delta: float):
                     break
 
 func _damage(player: int, amount: float):
-    if player == 0: hp1 = max(0.0, hp1-amount)
-    else: hp2 = max(0.0, hp2-amount)
+    if player == 0:
+        hp1 = max(0.0, hp1-amount)
+    else:
+        hp2 = max(0.0, hp2-amount)
+    hurt_anim_timer[player] = 0.24
+    screen_shake = maxf(screen_shake, 0.075)
 
 func _update_effects(delta):
     for i in range(effects.size()-1,-1,-1):
@@ -734,6 +895,8 @@ func _draw():
     if mode == Mode.MENU:
         _draw_menu_backdrop()
         return
+    draw_offset = Vector2(sin(visual_time * 47.0), cos(visual_time * 39.0) * 0.7) * screen_shake * 13.0
+    draw_set_transform(draw_offset, 0.0, Vector2.ONE)
     draw_texture_rect(ARENA, Rect2(0,0,1600,900), false)
     _draw_arena_ambience()
     if campaign_active:
@@ -774,8 +937,8 @@ func _draw():
         _draw_prince_aura(p1)
     if char2 == 4:
         _draw_prince_aura(p2)
-    _draw_fighter(CHAR_TEXTURES[char1], p1)
-    _draw_fighter(CHAR_TEXTURES[char2], p2)
+    _draw_fighter(CHAR_TEXTURES[char1], p1, 0)
+    _draw_fighter(CHAR_TEXTURES[char2], p2, 1)
     if _is_dark_prince_empowered(0):
         draw_arc(p1, 76, 0, TAU, 48, Color("#bd91ff"), 5)
     if _is_dark_prince_empowered(1):
@@ -785,45 +948,80 @@ func _draw():
     for fx in effects:
         var ratio = fx.life/fx.max
         if fx.kind == "slash":
-            var d: Vector2 = fx.dir
+            # Directional blade trail, not a generic semicircle: three tapered strokes
+            # create a readable weapon path and point toward the hit direction.
+            var d: Vector2 = fx.dir.normalized()
             var c: Color = fx.color
             var center: Vector2 = fx.pos
-            var side = d.rotated(1.05)*54*ratio
-            var end = d*70*ratio
-            draw_line(center-side,center+end,Color(c.r,c.g,c.b,ratio),12)
-            draw_line(center-side*0.7,center+end*0.8,Color(1,0.92,0.72,ratio),4)
+            var side: Vector2 = d.orthogonal()
+            var travel: float = 92.0 * (1.0 - ratio * 0.18)
+            var tail: Vector2 = center - d * 30.0
+            var tip: Vector2 = center + d * travel
+            draw_line(tail + side * 25.0, tip, Color(c.r, c.g, c.b, ratio * 0.42), 15.0 * ratio + 1.0, true)
+            draw_line(tail + side * 13.0, tip - side * 5.0, Color(c.r, c.g, c.b, ratio), 7.0 * ratio + 1.0, true)
+            draw_line(tail + side * 8.0, tip - side * 9.0, Color(1.0, 0.94, 0.78, ratio), 2.5 * ratio + 0.5, true)
         elif fx.kind == "hit":
-            draw_circle(fx.pos, 36*(1-ratio)+8, Color(1,0.86,0.55,ratio))
+            var burst_radius: float = 12.0 + 24.0 * (1.0 - ratio)
+            for ray in range(8):
+                var ray_dir := Vector2.RIGHT.rotated(TAU * float(ray) / 8.0)
+                draw_line(fx.pos + ray_dir * 3.0, fx.pos + ray_dir * burst_radius, Color(1.0, 0.78, 0.36, ratio), 3.0 * ratio + 0.5, true)
+        elif fx.kind == "sparks":
+            var spark_dir: Vector2 = fx.dir
+            for spark in range(7):
+                var angle: float = -0.9 + float(spark) * 0.3
+                var ray_dir: Vector2 = spark_dir.rotated(angle)
+                var start: Vector2 = fx.pos + ray_dir * (7.0 + float(spark % 3) * 3.0)
+                draw_line(start, start + ray_dir * (18.0 + 24.0 * (1.0 - ratio)), Color(1.0, 0.72 + 0.2 * ratio, 0.38, ratio), 2.0, true)
         elif fx.kind == "roots":
             for a in range(8):
                 var angle = TAU*a/8
                 draw_line(fx.pos,fx.pos+Vector2(cos(angle),sin(angle))*78*(1-ratio*0.35),Color(0.55,0.78,0.32,ratio),8)
         elif fx.kind == "slam":
-            draw_arc(fx.pos,100*(1-ratio*0.3),0,TAU,48,Color(0.95,0.68,0.32,ratio),10)
+            var crack_length: float = 82.0 * (1.0 - ratio * 0.25)
+            for crack in range(10):
+                var crack_dir := Vector2.RIGHT.rotated(TAU * float(crack) / 10.0)
+                var start: Vector2 = fx.pos + crack_dir * 12.0
+                var finish: Vector2 = fx.pos + crack_dir * crack_length
+                draw_line(start, finish, Color(0.98, 0.66, 0.27, ratio * 0.9), 5.0 * ratio + 1.0, true)
+                draw_line(start + crack_dir.orthogonal() * 4.0, finish + crack_dir.orthogonal() * 4.0, Color(0.28, 0.18, 0.12, ratio * 0.8), 2.0, true)
         elif fx.kind == "shadow_burst":
             draw_circle(fx.pos, 260*(1-ratio)+30, Color(0.22,0.10,0.38,0.28*ratio))
             draw_arc(fx.pos, 260*(1-ratio)+30, 0, TAU, 64, Color(0.68,0.42,0.95,ratio), 10)
-    if attack_flash[0] > 0:
-        draw_arc(p1+facing[0]*42,68,-1.3,1.3,20,CHAR_COLORS[char1],8)
-    if attack_flash[1] > 0:
-        draw_arc(p2+facing[1]*42,68,PI-1.3,PI+1.3,20,CHAR_COLORS[char2],8)
     draw_string(ThemeDB.fallback_font,Vector2(460,850),status_text,HORIZONTAL_ALIGNMENT_CENTER,700,18,Color("#fff0d0"))
     if roots[0] > 0: draw_string(ThemeDB.fallback_font,p1+Vector2(-25,-70),"ROOTED",HORIZONTAL_ALIGNMENT_CENTER,100,14,Color("#b4e47d"))
     if roots[1] > 0: draw_string(ThemeDB.fallback_font,p2+Vector2(-25,-70),"ROOTED",HORIZONTAL_ALIGNMENT_CENTER,100,14,Color("#b4e47d"))
+    for fighter in range(2):
+        if combo_window[fighter] > 0.0 and combo_index[fighter] > 0:
+            var combo_pos: Vector2 = p1 if fighter == 0 else p2
+            draw_string(ThemeDB.fallback_font, combo_pos + Vector2(-28, -176), "КОМБО  x%d" % (combo_index[fighter] + 1), HORIZONTAL_ALIGNMENT_CENTER, 140, 15, Color("#ffd58e"))
 
 
-func _draw_fighter(texture: Texture2D, center: Vector2) -> void:
-    # Keep the source aspect ratio: no stretching, pixel enlargement, or card-frame crop.
-    var target_height := 276.0
-    var aspect := float(texture.get_width()) / maxf(1.0, float(texture.get_height()))
-    var target_width := target_height * aspect
-    var destination := Rect2(
-        center.x - target_width * 0.5,
-        center.y - target_height * 0.5 - 3.0,
-        target_width,
-        target_height
-    )
-    draw_texture_rect(texture, destination, false, Color.WHITE)
+func _draw_fighter(texture: Texture2D, center: Vector2, player: int) -> void:
+    # The artwork is animated in real time: idle breathing, footstep bob,
+    # directional lean, a committed attack lunge, recoil and hit flash.
+    var character: int = char1 if player == 0 else char2
+    var bob: float = sin(fighter_anim_time[player] * (7.5 if move_blend[player] > 0.1 else 2.4)) * (5.0 if move_blend[player] > 0.1 else 2.2)
+    var attack_ratio: float = clampf(attack_anim_timer[player] / 0.34, 0.0, 1.0)
+    var attack_ease: float = sin((1.0 - attack_ratio) * PI)
+    var hurt_ratio: float = clampf(hurt_anim_timer[player] / 0.24, 0.0, 1.0)
+    var facing_angle: float = facing[player].angle()
+    var side_sign: float = -1.0 if facing[player].x < 0.0 else 1.0
+    var lean: float = clampf(facing_angle * 0.12, -0.18, 0.18) * move_blend[player]
+    var rotation: float = lean + side_sign * attack_ease * 0.10 - side_sign * hurt_ratio * 0.07
+    var scale_x: float = 1.0 + move_blend[player] * 0.025 - attack_ease * 0.035
+    var scale_y: float = 1.0 - move_blend[player] * 0.018 + attack_ease * 0.045
+    var lunge: Vector2 = facing[player] * attack_ease * (16.0 if character == 1 else 10.0)
+    var draw_center: Vector2 = center + draw_offset + Vector2(0.0, bob) + lunge + Vector2(-side_sign * hurt_ratio * 7.0, 0.0)
+    var target_height: float = 286.0 if character == 3 else 276.0
+    var aspect: float = float(texture.get_width()) / maxf(1.0, float(texture.get_height()))
+    var target_width: float = target_height * aspect
+    var flip: float = -1.0 if facing[player].x < 0.0 else 1.0
+    draw_set_transform(draw_center, rotation, Vector2(scale_x * flip, scale_y))
+    var tint := Color(1.0, 0.72, 0.72, 1.0) if hurt_ratio > 0.0 else Color.WHITE
+    draw_texture_rect(texture, Rect2(-target_width * 0.5, -target_height * 0.5 - 3.0, target_width, target_height), false, tint)
+    draw_set_transform(draw_offset, 0.0, Vector2.ONE)
+    if hurt_ratio > 0.0:
+        draw_circle(draw_center - draw_offset + Vector2(0.0, -target_height * 0.36), 5.0 + hurt_ratio * 4.0, Color(1.0, 0.35, 0.25, hurt_ratio * 0.55))
 
 
 func _update_campaign_event(delta: float) -> void:
@@ -1124,15 +1322,15 @@ func _update_embers(delta: float) -> void:
 func _draw_menu_backdrop() -> void:
     draw_texture_rect(MENU_BACKDROP, Rect2(0, 0, 1600, 900), false)
     # Dark cinematic overlay keeps menu labels readable while preserving the supplied artwork.
-    draw_rect(Rect2(0, 0, 1600, 900), Color(0.018, 0.022, 0.045, 0.40))
-    draw_rect(Rect2(0, 0, 1600, 900), Color(0.0, 0.0, 0.0, 0.16))
+    draw_rect(Rect2(0, 0, 1600, 900), Color(0.018, 0.022, 0.045, 0.28))
+    draw_rect(Rect2(0, 0, 1600, 900), Color(0.0, 0.0, 0.0, 0.08))
     for i in range(7):
         var fx := fposmod(float(i) * 260.0 + visual_time * 18.0, 1900.0) - 150.0
         draw_circle(Vector2(fx, 660 + sin(visual_time * 0.35 + i) * 25), 95, Color(0.55, 0.60, 0.72, 0.055))
     for particle in ember_particles:
         var pos: Vector2 = particle.pos
         draw_circle(pos, float(particle.size), Color(1.0, 0.58, 0.22, float(particle.alpha)))
-    draw_rect(Rect2(0, 0, 1600, 900), Color(0, 0, 0, 0.12))
+    draw_rect(Rect2(0, 0, 1600, 900), Color(0, 0, 0, 0.05))
 
 func _draw_arena_ambience() -> void:
     var torch_positions := [Vector2(350, 150), Vector2(1250, 150), Vector2(350, 650), Vector2(1250, 650)]
