@@ -1,0 +1,24 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/characters/knight_rig.tscn" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/characters/rogue_rig.tscn" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/characters/druid_rig.tscn" id="3"]
+[ext_resource type="PackedScene" path="res://scenes/characters/guardian_rig.tscn" id="4"]
+[ext_resource type="PackedScene" path="res://scenes/characters/dark_prince_rig.tscn" id="5"]
+
+[node name="RigShowcase" type="Node2D"]
+
+[node name="Knight" parent="." instance=ExtResource("1")]
+position = Vector2(160, 300)
+
+[node name="Rogue" parent="." instance=ExtResource("2")]
+position = Vector2(360, 300)
+
+[node name="Druid" parent="." instance=ExtResource("3")]
+position = Vector2(560, 300)
+
+[node name="Guardian" parent="." instance=ExtResource("4")]
+position = Vector2(760, 300)
+
+[node name="DarkPrince" parent="." instance=ExtResource("5")]
+position = Vector2(960, 300)

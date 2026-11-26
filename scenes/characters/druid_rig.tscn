@@ -1,0 +1,63 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/dark_fantasy/rig_parts/druid/head.png" id="head"]
+[ext_resource type="Texture2D" path="res://assets/dark_fantasy/rig_parts/druid/torso.png" id="torso"]
+[ext_resource type="Texture2D" path="res://assets/dark_fantasy/rig_parts/druid/arm_l.png" id="arm_l"]
+[ext_resource type="Texture2D" path="res://assets/dark_fantasy/rig_parts/druid/arm_r.png" id="arm_r"]
+[ext_resource type="Texture2D" path="res://assets/dark_fantasy/rig_parts/druid/leg_l.png" id="leg_l"]
+[ext_resource type="Texture2D" path="res://assets/dark_fantasy/rig_parts/druid/leg_r.png" id="leg_r"]
+
+[node name="DruidRig" type="Node2D"]
+
+[node name="Skeleton2D" type="Skeleton2D" parent="."]
+
+[node name="Root" type="Bone2D" parent="Skeleton2D"]
+position = Vector2(0, 0)
+
+[node name="Torso" type="Bone2D" parent="Skeleton2D/Root"]
+position = Vector2(-0.22, -24.85)
+
+[node name="Head" type="Bone2D" parent="Skeleton2D/Root/Torso"]
+position = Vector2(0.00, -88.51)
+
+[node name="ArmL" type="Bone2D" parent="Skeleton2D/Root/Torso"]
+position = Vector2(-56.46, 10.68)
+
+[node name="ArmR" type="Bone2D" parent="Skeleton2D/Root/Torso"]
+position = Vector2(56.68, 10.68)
+
+[node name="LegL" type="Bone2D" parent="Skeleton2D/Root"]
+position = Vector2(-26.60, 88.29)
+
+[node name="LegR" type="Bone2D" parent="Skeleton2D/Root"]
+position = Vector2(28.12, 88.29)
+
+[node name="HeadArt" type="Sprite2D" parent="Skeleton2D/Root/Torso/Head"]
+texture = ExtResource("head")
+position = Vector2(-0.00, 88.51)
+scale = Vector2(0.4360, 0.4360)
+
+[node name="TorsoArt" type="Sprite2D" parent="Skeleton2D/Root/Torso"]
+texture = ExtResource("torso")
+position = Vector2(0.22, 24.85)
+scale = Vector2(0.4360, 0.4360)
+
+[node name="Arm_LArt" type="Sprite2D" parent="Skeleton2D/Root/Torso/ArmL"]
+texture = ExtResource("arm_l")
+position = Vector2(56.46, -10.68)
+scale = Vector2(0.4360, 0.4360)
+
+[node name="Arm_RArt" type="Sprite2D" parent="Skeleton2D/Root/Torso/ArmR"]
+texture = ExtResource("arm_r")
+position = Vector2(-56.68, -10.68)
+scale = Vector2(0.4360, 0.4360)
+
+[node name="Leg_LArt" type="Sprite2D" parent="Skeleton2D/Root/LegL"]
+texture = ExtResource("leg_l")
+position = Vector2(26.60, -88.29)
+scale = Vector2(0.4360, 0.4360)
+
+[node name="Leg_RArt" type="Sprite2D" parent="Skeleton2D/Root/LegR"]
+texture = ExtResource("leg_r")
+position = Vector2(-28.12, -88.29)
+scale = Vector2(0.4360, 0.4360)
