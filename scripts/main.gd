@@ -3,12 +3,14 @@ extends Node2D
 const ARENA = preload("res://assets/dark_fantasy/arena_battle.png")
 const MENU_BACKDROP = preload("res://assets/dark_fantasy/menu_fortress.png")
 const CHAR_PORTRAITS = [preload("res://assets/dark_fantasy/portrait_knight.png"), preload("res://assets/dark_fantasy/portrait_rogue.png"), preload("res://assets/dark_fantasy/portrait_druid.png"), preload("res://assets/dark_fantasy/portrait_guardian.png"), preload("res://assets/dark_fantasy/portrait_dark_prince.png")]
+# High-resolution, transparent full-body character art. The original gameplay sprites
+# remain in assets/ for compatibility, but these unified illustrations are used in battle.
 const CHAR_TEXTURES = [
-    preload("res://assets/hero_red.png"),
-    preload("res://assets/hero_blue.png"),
-    preload("res://assets/hero_druid.png"),
-    preload("res://assets/hero_guardian.png"),
-    preload("res://assets/hero_dark_prince.png")
+    preload("res://assets/dark_fantasy/fighter_knight.png"),
+    preload("res://assets/dark_fantasy/fighter_rogue.png"),
+    preload("res://assets/dark_fantasy/fighter_druid.png"),
+    preload("res://assets/dark_fantasy/fighter_guardian.png"),
+    preload("res://assets/dark_fantasy/fighter_dark_prince.png")
 ]
 const CHAR_NAMES = ["Рыцарь", "Разбойник", "Друид", "Страж", "Тёмный принц"]
 const CHAR_COLORS = [Color("#d65b43"), Color("#56b6a0"), Color("#8bbd62"), Color("#d5a64d"), Color("#9b72d6")]
@@ -765,14 +767,15 @@ func _draw():
                 draw_polyline(points, Color(0.055,0.025,0.095,0.96*fade), 20.0, true)
                 draw_polyline(points, Color(0.48,0.25,0.72,0.9*fade), 5.0, true)
                 draw_circle(points[8], 8.0, Color(0.75,0.56,1.0,0.9*fade))
-    draw_circle(p1+Vector2(0,32),45,Color(0.65,0.12,0.10,0.22))
-    draw_circle(p2+Vector2(0,32),45,Color(0.12,0.38,0.78,0.22))
+    # Soft contact shadows anchor the illustrated fighters to the arena floor.
+    draw_circle(p1 + Vector2(0, 132), 43, Color(0.015, 0.012, 0.018, 0.58))
+    draw_circle(p2 + Vector2(0, 132), 43, Color(0.015, 0.012, 0.018, 0.58))
     if char1 == 4:
         _draw_prince_aura(p1)
     if char2 == 4:
         _draw_prince_aura(p2)
-    draw_texture(CHAR_TEXTURES[char1], p1-Vector2(96,96))
-    draw_texture(CHAR_TEXTURES[char2], p2-Vector2(96,96))
+    _draw_fighter(CHAR_TEXTURES[char1], p1)
+    _draw_fighter(CHAR_TEXTURES[char2], p2)
     if _is_dark_prince_empowered(0):
         draw_arc(p1, 76, 0, TAU, 48, Color("#bd91ff"), 5)
     if _is_dark_prince_empowered(1):
@@ -807,6 +810,20 @@ func _draw():
     draw_string(ThemeDB.fallback_font,Vector2(460,850),status_text,HORIZONTAL_ALIGNMENT_CENTER,700,18,Color("#fff0d0"))
     if roots[0] > 0: draw_string(ThemeDB.fallback_font,p1+Vector2(-25,-70),"ROOTED",HORIZONTAL_ALIGNMENT_CENTER,100,14,Color("#b4e47d"))
     if roots[1] > 0: draw_string(ThemeDB.fallback_font,p2+Vector2(-25,-70),"ROOTED",HORIZONTAL_ALIGNMENT_CENTER,100,14,Color("#b4e47d"))
+
+
+func _draw_fighter(texture: Texture2D, center: Vector2) -> void:
+    # Keep the source aspect ratio: no stretching, pixel enlargement, or card-frame crop.
+    var target_height := 276.0
+    var aspect := float(texture.get_width()) / maxf(1.0, float(texture.get_height()))
+    var target_width := target_height * aspect
+    var destination := Rect2(
+        center.x - target_width * 0.5,
+        center.y - target_height * 0.5 - 3.0,
+        target_width,
+        target_height
+    )
+    draw_texture_rect(texture, destination, false, Color.WHITE)
 
 
 func _update_campaign_event(delta: float) -> void:
